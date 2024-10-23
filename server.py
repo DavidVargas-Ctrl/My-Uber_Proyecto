@@ -1,4 +1,13 @@
-# Servidor.py
+"""
+Uso:
+    python server.py --cuadricula_N <N> --cuadricula_M <M>
+
+Ejemplo:
+    python server.py --cuadricula_N 50 --cuadricula_M 50
+    python server.py --cuadricula_N 50 --cuadricula_M 50 --port 1884
+    python server.py --cuadricula_N 50 --cuadricula_M 50 --port 1883
+
+"""
 
 import threading
 import time
@@ -102,8 +111,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Proceso del Servidor")
     parser.add_argument('--cuadricula_N', type=int, required=True, help='Tamaño N de la cuadrícula')
     parser.add_argument('--cuadricula_M', type=int, required=True, help='Tamaño M de la cuadrícula')
-    parser.add_argument('--broker', type=str, default='localhost', help='Dirección del broker MQTT (default: localhost)')
     parser.add_argument('--port', type=int, default=1883, help='Puerto del broker MQTT (default: 1883)')
     args = parser.parse_args()
 
-    proceso_servidor(N=args.cuadricula_N, M=args.cuadricula_M, broker_address=args.broker, broker_port=args.port)
+    proceso_servidor(N=args.cuadricula_N,
+                     M=args.cuadricula_M,
+                     broker_address='localhost',
+                     broker_port=args.port)

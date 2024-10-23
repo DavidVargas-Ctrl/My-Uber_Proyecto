@@ -3,8 +3,8 @@ Uso:
     python taxi.py --taxi_id <id> --init_x <x> --init_y <y> --velocidad <velocidad> --broker <broker_address>
 
 Ejemplos:
-    python taxi.py --taxi_id 1 --cuadricula_N 50 --cuadricula_M 50 --init_x 5 --init_y 5 --velocidad 2 --broker localhost
-    python taxi.py --taxi_id 3 --cuadricula_N 50 --cuadricula_M 50 --init_x 6 --init_y 7 --velocidad 4 --broker localhost
+    python taxi.py --taxi_id 1 --cuadricula_N 50 --cuadricula_M 50 --init_x 5 --init_y 5 --velocidad 2 --port 1884
+    python taxi.py --taxi_id 3 --cuadricula_N 50 --cuadricula_M 50 --init_x 6 --init_y 7 --velocidad 4 --port 1883
 """
 
 import time
@@ -148,7 +148,6 @@ if __name__ == "__main__":
     parser.add_argument('--init_x', type=int, required=True, help='Posición inicial x')
     parser.add_argument('--init_y', type=int, required=True, help='Posición inicial y')
     parser.add_argument('--velocidad', type=int, required=True, choices=[1, 2, 4], help='Velocidad en km/h (1, 2, 4)')
-    parser.add_argument('--broker', type=str, default='localhost', help='Dirección del broker MQTT (default: localhost)')
     parser.add_argument('--port', type=int, default=1883, help='Puerto del broker MQTT (default: 1883)')
     args = parser.parse_args()
 
@@ -157,6 +156,6 @@ if __name__ == "__main__":
         tam_cuadricula=(args.cuadricula_N, args.cuadricula_M),
         pos_inicial=(args.init_x, args.init_y),
         velocidad_kmh=args.velocidad,
-        broker_address=args.broker,
+        broker_address='localhost',
         broker_port=args.port
     )
