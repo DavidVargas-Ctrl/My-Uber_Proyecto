@@ -33,6 +33,7 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     x, y = pos_inicial  # Posición actual del taxi
     minutos_transcurridos = 0
 
+    # Independendecia entre hilos
     lock = threading.Lock()
 
     # Configuración del cliente MQTT
@@ -40,6 +41,7 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     client.connect(broker_address, broker_port, 60)
     client.loop_start()
 
+    # Configuracion del topic al que se esta subscribiendo
     topic_posicion = f"taxis/{taxi_id}/posicion"
 
     def publicar_posicion(x, y):
@@ -52,20 +54,13 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     print(f"Posición inicial del Taxi {taxi_id}: ({x_inicial}, {y_inicial})")
     publicar_posicion(x_inicial, y_inicial)
 
+    # Tiempo establecido por cada hilo
     evento_tiempo = threading.Event()
 
-    def mostrar_informacion_tiempo():
-        nonlocal minutos_transcurridos
-        while True:
-            evento_tiempo.wait(timeout=30)  # Esperar 30 segundos
-            minutos_transcurridos += 30  # Sumar 30 minutos
-            with lock:
-                print(f"Han transcurrido {minutos_transcurridos} minutos.")
-                print(f"Su posición actual es: ({x}, {y})")  # Imprimir la posición actual cada 30 minutos
-            evento_tiempo.clear()
 
     def movimiento_taxi():
-        nonlocal x, y
+        nonlocal x, y, minutos_transcurridos
+        tiempo_espera = False
 
         # Definir intervalo y número de celdas en función de la velocidad
         if velocidad_kmh == 4:
@@ -81,10 +76,10 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
 
         while True:
             time.sleep(intervalo)  # Esperar el tiempo correspondiente
+            minutos_transcurridos += 30  # Actualizar minutos transcurridos
 
-            # Actualizar celdas_a_mover si la velocidad es 1 y ya pasó el primer intervalo
-            current_time = minutos_transcurridos
-            if velocidad_kmh == 1 and current_time >= 30:
+            if velocidad_kmh == 1 and not tiempo_espera:
+                tiempo_espera = True
                 celdas_a_mover = 1
 
             # Moverse celdas_a_mover veces en direcciones aleatorias
@@ -109,6 +104,14 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
                 publicar_posicion(x, y)
 
             evento_tiempo.set()
+
+    def mostrar_informacion_tiempo():
+        while True:
+            evento_tiempo.wait()  # Esperar hasta que el evento sea activado
+            with lock:
+                print(f"Han transcurrido {minutos_transcurridos} minutos.")
+                print(f"Su posición actual es: ({x}, {y})")  # Imprimir la posición actual
+            evento_tiempo.clear()
 
     threading.Thread(target=mostrar_informacion_tiempo, daemon=True).start()
     threading.Thread(target=movimiento_taxi, daemon=True).start()
@@ -156,6 +159,6 @@ if __name__ == "__main__":
         tam_cuadricula=(args.cuadricula_N, args.cuadricula_M),
         pos_inicial=(args.init_x, args.init_y),
         velocidad_kmh=args.velocidad,
-        broker_address='localhost',
+        broker_address='10.43.100.114',
         broker_port=args.port
     )

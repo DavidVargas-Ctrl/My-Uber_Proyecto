@@ -31,14 +31,15 @@ def proceso_servidor(N, M, broker_address, broker_port):
     pos_taxi = defaultdict(tuple)    # {taxi_id: (x, y)}
     pos_lock = threading.Lock()
 
-    # Configuración del cliente MQTT
-    client = mqtt.Client(client_id="Servidor")
+
 
     def conexion(client, userdata, flags, rc):
         if rc == 0:
             print("Servidor conectado al broker MQTT exitosamente.")
             # Suscribirse a todos los tópicos de posición de taxis
             client.subscribe("taxis/+/posicion")
+
+            client.subscribe("taxis/+/posicion") #Categoria + Topico
         else:
             print(f"Error al conectar al broker MQTT, código de retorno {rc}")
             sys.exit(1)
@@ -69,6 +70,9 @@ def proceso_servidor(N, M, broker_address, broker_port):
 
         except Exception as e:
             print(f"Error al procesar mensaje: {e}")
+
+    # Configuración del cliente MQTT
+    client = mqtt.Client(client_id="Servidor")
 
     client.on_connect = conexion
     client.on_message = mensaje
@@ -116,5 +120,5 @@ if __name__ == "__main__":
 
     proceso_servidor(N=args.cuadricula_N,
                      M=args.cuadricula_M,
-                     broker_address='localhost',
+                     broker_address='10.43.100.114',
                      broker_port=args.port)
