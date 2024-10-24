@@ -3,7 +3,7 @@ Uso:
     python taxi.py --taxi_id <id> --init_x <x> --init_y <y> --velocidad <velocidad> --broker <broker_address>
 
 Ejemplos:
-    python taxi.py --taxi_id 1 --cuadricula_N 50 --cuadricula_M 50 --init_x 5 --init_y 5 --velocidad 2 --port 1884
+    python taxi.py --taxi_id 1 --cuadricula_N 50 --cuadricula_M 50 --init_x 5 --init_y 5 --velocidad 2 --port 1883
     python taxi.py --taxi_id 3 --cuadricula_N 50 --cuadricula_M 50 --init_x 6 --init_y 7 --velocidad 4 --port 1883
 """
 
@@ -61,6 +61,13 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     def movimiento_taxi():
         nonlocal x, y, minutos_transcurridos
         tiempo_espera = False
+        ultimo_pos = None
+        direcciones_opuestas = {
+            'N': 'S',
+            'S': 'N',
+            'E': 'O',
+            'O': 'E'
+        }
 
         # Definir intervalo y número de celdas en función de la velocidad
         if velocidad_kmh == 4:
@@ -82,24 +89,44 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
                 tiempo_espera = True
                 celdas_a_mover = 1
 
-            # Moverse celdas_a_mover veces en direcciones aleatorias
+
             with lock:
                 for _ in range(celdas_a_mover):
-                    direccion = random.choice(['N', 'S', 'E', 'O'])
+                    # Definir direcciones permitidas evitando la dirección opuesta
+                    if ultimo_pos:
+                        direcciones_permitidas = ['N', 'S', 'E', 'O']
+                        # Excluir la dirección opuesta a la última
+                        direcciones_permitidas.remove(direcciones_opuestas[ultimo_pos])
+                    else:
+                        direcciones_permitidas = ['N', 'S', 'E', 'O']
+
+                    # Si el taxi no puede moverse en ninguna dirección salta el movimiento
+                    if not direcciones_permitidas:
+                        continue
+
+                    # Elegir una dirección aleatoria de las permitidas
+                    nueva_pos = random.choice(direcciones_permitidas)
+
+                    # Actualizar la última dirección
+                    ultima_pos = nueva_pos
+
                     nuevo_x, nuevo_y = x, y
-                    if direccion == 'N' and y < N:
+                    if nueva_pos == 'N' and y < N:
                         nuevo_y += 1
-                    elif direccion == 'S' and y > 0:
+                    elif nueva_pos == 'S' and y > 0:
                         nuevo_y -= 1
-                    elif direccion == 'E' and x < M:
+                    elif nueva_pos == 'E' and x < M:
                         nuevo_x += 1
-                    elif direccion == 'O' and x > 0:
+                    elif nueva_pos == 'O' and x > 0:
                         nuevo_x -= 1
                     else:
-                        print(f"Taxi {taxi_id} ha alcanzado el límite en dirección {direccion}.")
+                        print(f"Taxi {taxi_id} ha alcanzado el límite en dirección {nueva_pos}.")
                         continue  # No moverse si se alcanza el límite
 
-                    x, y = nuevo_x, nuevo_y
+                    # Solo actualizar si la nueva posición es diferente
+                    if (nuevo_x, nuevo_y) != (x, y):
+                        x, y = nuevo_x, nuevo_y
+
 
                 publicar_posicion(x, y)
 
