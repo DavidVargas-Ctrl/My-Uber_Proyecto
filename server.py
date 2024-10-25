@@ -5,7 +5,8 @@ Uso:
 Ejemplo:
     python server.py --cuadricula_N 50 --cuadricula_M 50
     python server.py --cuadricula_N 50 --cuadricula_M 50 --port 1884
-    python server.py --cuadricula_N 50 --cuadricula_M 50 --port 1883
+    python server.py --cuadricula_N 50 --cuadricula_M 50 --brokers 10.43.101.195:1883
+
 
 """
 
@@ -17,7 +18,7 @@ import sys
 from collections import defaultdict
 import paho.mqtt.client as mqtt
 
-def proceso_servidor(N, M, broker_address, broker_port):
+def proceso_servidor(N, M, brokers):
     """
     Función principal para el proceso del servidor.
 
@@ -31,7 +32,12 @@ def proceso_servidor(N, M, broker_address, broker_port):
     pos_taxi = defaultdict(tuple)    # {taxi_id: (x, y)}
     pos_lock = threading.Lock()
 
-
+    clientes = []
+    for idBroker, (broker_direccion, broker_puerto) in enumerate(brokers): # Enumera opara asignar un ID distintitvo, a cada broker
+        client = mqtt.Client(client_id=f"Servidor_{idBroker}") # Aquí se crea un nuevo cliente MQTT para cada broker
+        client.broker_address = broker_direccion
+        client.broker_port = broker_puerto
+        client.topic_position = "taxis/+/posicion" # Subscripcion del cliente
 
     def conexion(client, info, banderas, rc):
         if rc == 0:
@@ -70,19 +76,20 @@ def proceso_servidor(N, M, broker_address, broker_port):
         except Exception as e:
             print(f"Error al procesar mensaje: {e}")
 
-    # Configuración del cliente MQTT
-    client = mqtt.Client(client_id="Servidor")
-
     client.on_connect = conexion
     client.on_message = mensaje
 
     try:
-        client.connect(broker_address, broker_port, 60)
+        client.connect(broker_direccion, broker_puerto, 60)
     except Exception as e:
         print(f"No se pudo conectar al broker MQTT: {e}")
         sys.exit(1)
 
-    client.loop_start()
+    clientes.append(client)
+
+    # Iniciar todos los clientes MQTT
+    for client in clientes:
+        client.loop_start()
 
     def asignar_servicios():
         """
@@ -110,14 +117,21 @@ def proceso_servidor(N, M, broker_address, broker_port):
         client.disconnect()
         sys.exit()
 
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Proceso del Servidor")
     parser.add_argument('--cuadricula_N', type=int, required=True, help='Tamaño N de la cuadrícula')
     parser.add_argument('--cuadricula_M', type=int, required=True, help='Tamaño M de la cuadrícula')
-    parser.add_argument('--port', type=int, default=1883, help='Puerto del broker MQTT (default: 1883)')
+    parser.add_argument('--brokers', type=str, required=True,
+                        help='Lista de brokers en formato ip:puerto, ip_n:puerto_n separados por comas')
     args = parser.parse_args()
+
+    brokers = []
+    for broker in args.brokers.split(','):
+        ip, port = broker.split(':')
+        brokers.append((ip.strip(), int(port.strip())))
 
     proceso_servidor(N=args.cuadricula_N,
                      M=args.cuadricula_M,
-                     broker_address='10.43.100.114',
-                     broker_port=args.port)
+                     brokers=brokers)

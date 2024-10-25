@@ -11,7 +11,6 @@ import time
 import threading
 import random
 import argparse
-import socket
 import sys
 import paho.mqtt.client as mqtt
 
