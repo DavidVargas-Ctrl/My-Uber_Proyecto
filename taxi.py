@@ -4,7 +4,8 @@ Uso:
 
 Ejemplos:
     python taxi.py --taxi_id 1 --cuadricula_N 50 --cuadricula_M 50 --init_x 5 --init_y 5 --velocidad 2 --port 1883
-    python taxi.py --taxi_id 3 --cuadricula_N 50 --cuadricula_M 50 --init_x 6 --init_y 7 --velocidad 4 --port 1883
+    python taxi.py --taxi_id 1 --cuadricula_N 50 --cuadricula_M 50 --init_x 5 --init_y 5 --velocidad 2 --brokers 10.43.100.114:1883,10.43.100.115:1884
+
 """
 
 import time
@@ -14,7 +15,7 @@ import argparse
 import sys
 import paho.mqtt.client as mqtt
 
-def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_address, broker_port):
+def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, brokers):
     """
     Función principal para el proceso del taxi.
 
@@ -23,8 +24,7 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
         tam_cuadricula (tuple): Dimensiones de la cuadrícula (N, M).
         pos_inicial (tuple): Posición inicial (x, y) del taxi.
         velocidad_kmh (int): Velocidad de movimiento en km/h (1, 2 o 4).
-        broker_address (str): Dirección del broker MQTT.
-        broker_port (int): Puerto del broker MQTT.
+        brokers (list): Lista de tuplas con dirección y puerto de brokers MQTT.
     """
 
     N, M = tam_cuadricula
@@ -36,13 +36,39 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     # Independendecia entre hilos
     lock = threading.Lock()
 
-    # Configuración del cliente MQTT
-    client = mqtt.Client(client_id=f"Taxi_{taxi_id}")
-    client.connect(broker_address, broker_port, 60)
-    client.loop_start()
+    clients = []  # Lista para almacenar los clientes MQTT
 
-    # Configuracion del topic al que se esta subscribiendo
+    # Definir el tópico de posición
     topic_posicion = f"taxis/{taxi_id}/posicion"
+
+    def conexion(client, info, bn, rc):
+        if rc == 0:
+            print(f"Taxi {taxi_id} conectado al broker MQTT {client.broker_address}:{client.broker_port} exitosamente.")
+
+        else:
+            print(
+                f"Error al conectar al broker MQTT {client.broker_address}:{client.broker_port}, código de retorno {rc}")
+            sys.exit(1)
+
+    # Crear y configurar un cliente MQTT para cada broker
+    for idx, (broker_direccion, broker_puerto) in enumerate(brokers):
+        client_id = f"Taxi_{taxi_id}_{idx}"
+        client = mqtt.Client(client_id=client_id)
+        client.broker_address = broker_direccion
+        client.broker_port = broker_puerto
+
+        # Asignar funciones de callback
+        client.on_connect = conexion
+
+        try:
+            client.connect(broker_direccion, broker_puerto, 60)
+        except Exception as e:
+            print(f"No se pudo conectar al broker MQTT {broker_direccion}:{broker_puerto}: {e}")
+            sys.exit(1)
+
+        client.loop_start()  # Iniciar el loop para manejar la comunicación
+
+        clients.append(client)
 
     def publicar_posicion(x, y):
         """ Publica la posición actual del taxi al broker MQTT. """
@@ -162,14 +188,24 @@ if __name__ == "__main__":
     parser.add_argument('--init_x', type=int, required=True, help='Posición inicial x')
     parser.add_argument('--init_y', type=int, required=True, help='Posición inicial y')
     parser.add_argument('--velocidad', type=int, required=True, choices=[1, 2, 4], help='Velocidad en km/h (1, 2, 4)')
-    parser.add_argument('--port', type=int, default=1883, help='Puerto del broker MQTT (default: 1883)')
+    parser.add_argument('--brokers', type=str, required=True,
+                        help='Lista de brokers en formato ip:port separados por comas')
     args = parser.parse_args()
+
+
+    brokers = []
+    for broker in args.brokers.split(','):
+        try:
+            ip, port = broker.split(':')
+            brokers.append((ip.strip(), int(port.strip())))
+        except ValueError:
+            print(f"Formato de broker inválido: {broker}. Debe ser ip:port")
+            sys.exit(1)
 
     taxi_procesos(
         taxi_id=args.taxi_id,
         tam_cuadricula=(args.cuadricula_N, args.cuadricula_M),
         pos_inicial=(args.init_x, args.init_y),
         velocidad_kmh=args.velocidad,
-        broker_address='10.43.100.114',
-        broker_port=args.port
+        brokers=brokers
     )
