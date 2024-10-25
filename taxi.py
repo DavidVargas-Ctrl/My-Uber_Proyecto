@@ -32,6 +32,7 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     x_inicial, y_inicial = pos_inicial  # Guardar la posición inicial del taxi
     x, y = pos_inicial  # Posición actual del taxi
     minutos_transcurridos = 0
+    servicios_realizados = 0
 
     # Independendecia entre hilos
     lock = threading.Lock()
@@ -108,7 +109,7 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
                     nueva_pos = random.choice(direcciones_permitidas)
 
                     # Actualizar la última dirección
-                    ultima_pos = nueva_pos
+                    ultimo_pos = nueva_pos
 
                     nuevo_x, nuevo_y = x, y
                     if nueva_pos == 'N' and y < N:
@@ -153,22 +154,6 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
         client.disconnect()
         sys.exit()
 
-def get_local_ip():
-    """
-    Función auxiliar para obtener la dirección IP local de la máquina.
-
-    Retorna:
-        str: Dirección IP local.
-    """
-    ipLocal = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        ipLocal.connect(('10.255.255.255', 1))
-        IP = ipLocal.getsockname()[0]
-    except Exception:
-        IP = '127.0.0.1'
-    finally:
-        ipLocal.close()
-    return IP
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Proceso del Taxi")

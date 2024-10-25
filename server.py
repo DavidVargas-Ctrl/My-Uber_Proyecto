@@ -33,18 +33,17 @@ def proceso_servidor(N, M, broker_address, broker_port):
 
 
 
-    def conexion(client, userdata, flags, rc):
+    def conexion(client, info, banderas, rc):
         if rc == 0:
             print("Servidor conectado al broker MQTT exitosamente.")
             # Suscribirse a todos los tópicos de posición de taxis
-            client.subscribe("taxis/+/posicion")
+            client.subscribe("taxis/+/posicion")#Categoria + Topico
 
-            client.subscribe("taxis/+/posicion") #Categoria + Topico
         else:
             print(f"Error al conectar al broker MQTT, código de retorno {rc}")
             sys.exit(1)
 
-    def mensaje(client, userdata, msg):
+    def mensaje(cliente, info, msg):
         try:
             topic_parts = msg.topic.split('/')
             if len(topic_parts) != 3 or topic_parts[0] != 'taxis' or topic_parts[2] != 'posicion':
