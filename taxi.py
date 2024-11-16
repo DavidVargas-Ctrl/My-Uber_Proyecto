@@ -1,7 +1,6 @@
-
 """
 Uso:
-    python taxi.py --taxi_id <id> --init_x <x> --init_y <y> --velocidad <velocidad> --broker <broker_address>
+    python taxi.py --taxi_id <id> --cuadricula_N <N> --cuadricula_M <M> --init_x <x> --init_y <y> --velocidad <velocidad> --port <port>
 
 Ejemplos:
     python taxi.py --taxi_id 1 --cuadricula_N 50 --cuadricula_M 50 --init_x 5 --init_y 5 --velocidad 2 --port 1883
@@ -12,9 +11,9 @@ import time
 import threading
 import random
 import argparse
-import socket
 import sys
 import paho.mqtt.client as mqtt
+
 
 def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_address, broker_port):
     """
@@ -30,12 +29,10 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     """
 
     N, M = tam_cuadricula
-    x_inicial, y_inicial = pos_inicial  # Guardar la posición inicial del taxi
     x, y = pos_inicial  # Posición actual del taxi
     minutos_transcurridos = 0
-    servicios_realizados = 0
 
-    # Independendecia entre hilos
+    # Independencia entre hilos
     lock = threading.Lock()
 
     # Configuración del cliente MQTT
@@ -43,107 +40,49 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     client.connect(broker_address, broker_port, 60)
     client.loop_start()
 
-    # Configuracion del topic al que se esta subscribiendo
+    # Configuración del tópico al que se está publicando posiciones
     topic_posicion = f"taxis/{taxi_id}/posicion"
 
-    def publicar_posicion(x, y):
+    def publicar_posicion():
         """ Publica la posición actual del taxi al broker MQTT. """
         mensaje = f"{x} {y}"
         client.publish(topic_posicion, mensaje)
+        print(f"Taxi {taxi_id} publicó posición: ({x}, {y})")
 
-    # Enviar la posición inicial
     print(f"Taxi {taxi_id} se ha registrado exitosamente en el servidor.")
-    print(f"Posición inicial del Taxi {taxi_id}: ({x_inicial}, {y_inicial})")
-    publicar_posicion(x_inicial, y_inicial)
+    print(f"Posición inicial del Taxi {taxi_id}: ({x}, {y})")
+    publicar_posicion()
 
-    # Tiempo establecido por cada hilo
-    evento_tiempo = threading.Event()
-
-
-    def movimiento_taxi():
+    def movimiento_random():
         nonlocal x, y, minutos_transcurridos
-        tiempo_espera = False
-        ultimo_pos = None
-        direcciones_opuestas = {
-            'N': 'S',
-            'S': 'N',
-            'E': 'O',
-            'O': 'E'
-        }
 
-        # Definir intervalo y número de celdas en función de la velocidad
-        if velocidad_kmh == 4:
-            intervalo = 30  # 30 segundos
-            celdas_a_mover = 2  # Mover 2 celdas cada 30 segundos
-        elif velocidad_kmh == 2:
-            intervalo = 30  # 30 segundos
-            celdas_a_mover = 1  # Mover 1 celda cada 30 segundos
-        elif velocidad_kmh == 1:
-            # Taxi permanece en posición inicial durante los primeros 30 segundos
-            intervalo = 30  # 30 segundos sin moverse
-            celdas_a_mover = 0  # No moverse inicialmente
+        # Mapear velocidad en celdas por intervalo (cada 30 segundos)
+        celdas_por_intervalo = {
+            1: 0,  # No se mueve en los primeros 30 segundos
+            2: 1,  # Mueve 1 celda cada 30 segundos
+            4: 2,  # Mueve 2 celdas cada 30 segundos
+        }
+        movimiento = celdas_por_intervalo[velocidad_kmh]
 
         while True:
-            time.sleep(intervalo)  # Esperar el tiempo correspondiente
-            minutos_transcurridos += 30  # Actualizar minutos transcurridos
-
-            if velocidad_kmh == 1 and not tiempo_espera:
-                tiempo_espera = True
-                celdas_a_mover = 1
-
+            time.sleep(30)  # Esperar 30 segundos reales
+            minutos_transcurridos += 30  # Incrementar minutos simulados
 
             with lock:
-                for _ in range(celdas_a_mover):
-                    # Definir direcciones permitidas evitando la dirección opuesta
-                    if ultimo_pos:
-                        direcciones_permitidas = ['N', 'S', 'E', 'O']
-                        # Excluir la dirección opuesta a la última
-                        direcciones_permitidas.remove(direcciones_opuestas[ultimo_pos])
-                    else:
-                        direcciones_permitidas = ['N', 'S', 'E', 'O']
+                for _ in range(movimiento):
+                    dx, dy = random.choice([(0, 1), (0, -1), (1, 0), (-1, 0)])  # Movimiento aleatorio
+                    nuevo_x, nuevo_y = x + dx, y + dy
 
-                    # Si el taxi no puede moverse en ninguna dirección salta el movimiento
-                    if not direcciones_permitidas:
-                        continue
-
-                    # Elegir una dirección aleatoria de las permitidas
-                    nueva_pos = random.choice(direcciones_permitidas)
-
-                    # Actualizar la última dirección
-                    ultimo_pos = nueva_pos
-
-                    nuevo_x, nuevo_y = x, y
-                    if nueva_pos == 'N' and y < N:
-                        nuevo_y += 1
-                    elif nueva_pos == 'S' and y > 0:
-                        nuevo_y -= 1
-                    elif nueva_pos == 'E' and x < M:
-                        nuevo_x += 1
-                    elif nueva_pos == 'O' and x > 0:
-                        nuevo_x -= 1
-                    else:
-                        print(f"Taxi {taxi_id} ha alcanzado el límite en dirección {nueva_pos}.")
-                        continue  # No moverse si se alcanza el límite
-
-                    # Solo actualizar si la nueva posición es diferente
-                    if (nuevo_x, nuevo_y) != (x, y):
+                    # Validar límites de la cuadrícula
+                    if 0 <= nuevo_x < N and 0 <= nuevo_y < M:
                         x, y = nuevo_x, nuevo_y
 
+                # Publicar posición solo después de completar el intervalo de 30 minutos simulados
+                publicar_posicion()
+                print(f"Han transcurrido {minutos_transcurridos} minutos. Posición del taxi: ({x}, {y})")
 
-                publicar_posicion(x, y)
-
-            evento_tiempo.set()
-
-    def mostrar_informacion_tiempo():
-        while True:
-            evento_tiempo.wait()  # Esperar hasta que el evento sea activado
-            with lock:
-                print(f"Han transcurrido {minutos_transcurridos} minutos.")
-                print(f"Su posición actual es: ({x}, {y})")  # Imprimir la posición actual
-            evento_tiempo.clear()
-
-    threading.Thread(target=mostrar_informacion_tiempo, daemon=True).start()
-    threading.Thread(target=movimiento_taxi, daemon=True).start()
+    # Iniciar el hilo de movimiento
+    threading.Thread(target=movimiento_random, daemon=True).start()
 
     # Mantener el hilo principal activo
     try:
@@ -172,6 +111,6 @@ if __name__ == "__main__":
         tam_cuadricula=(args.cuadricula_N, args.cuadricula_M),
         pos_inicial=(args.init_x, args.init_y),
         velocidad_kmh=args.velocidad,
-        broker_address='10.43.100.114',
+        broker_address='test.mosquitto.org',
         broker_port=args.port
     )
