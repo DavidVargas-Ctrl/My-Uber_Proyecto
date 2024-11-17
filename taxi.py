@@ -14,7 +14,6 @@ import argparse
 import sys
 import paho.mqtt.client as mqtt
 
-
 def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_address, broker_port):
     """
     Función principal para el proceso del taxi.
@@ -43,46 +42,134 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     # Configuración del tópico al que se está publicando posiciones
     topic_posicion = f"taxis/{taxi_id}/posicion"
 
+    # Variables para gestionar el movimiento hacia usuarios
+    movimiento_usuario_event = threading.Event()
+    objetivo_usuario = None  # (user_id, user_x, user_y)
+
+    def on_connect(client, userdata, flags, rc):
+        if rc == 0:
+            topic_servicio = f"taxis/{taxi_id}/servicio"
+            client.subscribe(topic_servicio)
+            print(f"Taxi {taxi_id} conectado al broker MQTT y suscrito a {topic_servicio}")
+        else:
+            print(f"Taxi {taxi_id} error al conectar al broker MQTT, código de retorno {rc}")
+            sys.exit(1)
+
+    def on_message(client, userdata, msg):
+        try:
+            topic_parts = msg.topic.split('/')
+            if len(topic_parts) != 3 or topic_parts[0] != 'taxis' or topic_parts[2] != 'servicio':
+                return
+
+            # Mensaje de servicio: "Usuario {user_id} en (x, y)"
+            mensaje = msg.payload.decode()
+            partes = mensaje.split()
+            if len(partes) < 5:
+                return
+            user_id = partes[1]
+            user_x = int(partes[3].strip('(').strip(','))
+            user_y = int(partes[4].strip(')'))
+
+            # Simular mover al usuario
+            mover_al_usuario(user_id, user_x, user_y)
+
+        except Exception as e:
+            print(f"Taxi {taxi_id} error al procesar mensaje de servicio: {e}")
+
+    def mover_al_usuario(user_id, user_x, user_y):
+        """
+        Simular el movimiento del taxi hacia la posición del usuario.
+
+        Parámetros:
+            user_id (str): Identificador del usuario.
+            user_x (int): Posición x del usuario.
+            user_y (int): Posición y del usuario.
+        """
+        nonlocal x, y, minutos_transcurridos, objetivo_usuario
+        with lock:
+            if objetivo_usuario is not None:
+                print(f"Taxi {taxi_id} ya está atendiendo una solicitud. Ignorando nueva solicitud de Usuario {user_id}.")
+                return  # Ya está atendiendo a un usuario
+
+            objetivo_usuario = (user_id, user_x, user_y)
+            print(f"Taxi {taxi_id} moviéndose hacia el Usuario {user_id} en ({user_x}, {user_y})")
+            movimiento_usuario_event.set()
+
     def publicar_posicion():
         """ Publica la posición actual del taxi al broker MQTT. """
         mensaje = f"{x} {y}"
         client.publish(topic_posicion, mensaje)
         print(f"Taxi {taxi_id} publicó posición: ({x}, {y})")
 
+    # Asignar callbacks
+    client.on_connect = on_connect
+    client.on_message = on_message
+
     print(f"Taxi {taxi_id} se ha registrado exitosamente en el servidor.")
     print(f"Posición inicial del Taxi {taxi_id}: ({x}, {y})")
     publicar_posicion()
 
-    def movimiento_random():
-        nonlocal x, y, minutos_transcurridos
-
-        # Mapear velocidad en celdas por intervalo (cada 30 segundos)
-        celdas_por_intervalo = {
-            1: 0,  # No se mueve en los primeros 30 segundos
-            2: 1,  # Mueve 1 celda cada 30 segundos
-            4: 2,  # Mueve 2 celdas cada 30 segundos
-        }
-        movimiento = celdas_por_intervalo[velocidad_kmh]
+    def movimiento():
+        nonlocal x, y, minutos_transcurridos, objetivo_usuario
 
         while True:
-            time.sleep(30)  # Esperar 30 segundos reales
-            minutos_transcurridos += 30  # Incrementar minutos simulados
+            if movimiento_usuario_event.is_set():
+                # Mover hacia el usuario
+                user_id, user_x, user_y = objetivo_usuario
+                print(f"Taxi {taxi_id} se dirige hacia el usuario {user_id} en ({user_x}, {user_y})")
+                while (x, y) != (user_x, user_y):
+                    with lock:
+                        if x < user_x:
+                            x += 1
+                        elif x > user_x:
+                            x -= 1
+                        if y < user_y:
+                            y += 1
+                        elif y > user_y:
+                            y -= 1
+                        # Simular tiempo de movimiento por celda
+                        time.sleep(30 / velocidad_kmh)  # 1 segundo real = 1 minuto programa
 
-            with lock:
-                for _ in range(movimiento):
-                    dx, dy = random.choice([(0, 1), (0, -1), (1, 0), (-1, 0)])  # Movimiento aleatorio
-                    nuevo_x, nuevo_y = x + dx, y + dy
+                    # No publicar cada movimiento, solo al llegar
+                # Llegó al usuario
+                print(f"Taxi {taxi_id} ha llegado al Usuario {user_id} en ({x}, {y})")
+                # Simular tiempo de servicio
+                tiempo_servicio = 30  # 30 segundos reales = 30 minutos programa
+                print(f"Taxi {taxi_id} está realizando el servicio al Usuario {user_id} por {tiempo_servicio} segundos.")
+                time.sleep(tiempo_servicio)  # 1 segundo real = 1 minuto programa
 
-                    # Validar límites de la cuadrícula
-                    if 0 <= nuevo_x < N and 0 <= nuevo_y < M:
-                        x, y = nuevo_x, nuevo_y
+                # Notificar al servidor que el servicio ha sido completado
+                topic_completado = f"taxis/{taxi_id}/completado"
+                mensaje_completado = f"Taxi {taxi_id} ha completado el servicio para Usuario {user_id}."
+                client.publish(topic_completado, mensaje_completado)
+                print(f"Taxi {taxi_id} ha completado el servicio para Usuario {user_id}.")
 
-                # Publicar posición solo después de completar el intervalo de 30 minutos simulados
+                # Resetear el objetivo
+                with lock:
+                    objetivo_usuario = None
+                movimiento_usuario_event.clear()
+            else:
+                # Movimiento aleatorio cada 30 segundos
+                with lock:
+                    celdas_a_mover = {1: 0, 2: 1, 4: 2}.get(velocidad_kmh, 1)
+                    for _ in range(celdas_a_mover):
+                        dx, dy = random.choice([(0, 1), (0, -1), (1, 0), (-1, 0)])  # Movimiento aleatorio
+                        nuevo_x, nuevo_y = x + dx, y + dy
+
+                        # Validar límites de la cuadrícula
+                        if 0 <= nuevo_x < N and 0 <= nuevo_y < M:
+                            x, y = nuevo_x, nuevo_y
+
+                # Esperar el intervalo antes de publicar
+                time.sleep(30)  # 30 segundos reales = 30 minutos programa
+                minutos_transcurridos += 30
+
+                # Publicar posición solo después de completar el intervalo
                 publicar_posicion()
                 print(f"Han transcurrido {minutos_transcurridos} minutos. Posición del taxi: ({x}, {y})")
 
     # Iniciar el hilo de movimiento
-    threading.Thread(target=movimiento_random, daemon=True).start()
+    threading.Thread(target=movimiento, daemon=True).start()
 
     # Mantener el hilo principal activo
     try:
@@ -93,7 +180,6 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
         client.loop_stop()
         client.disconnect()
         sys.exit()
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Proceso del Taxi")
@@ -111,6 +197,6 @@ if __name__ == "__main__":
         tam_cuadricula=(args.cuadricula_N, args.cuadricula_M),
         pos_inicial=(args.init_x, args.init_y),
         velocidad_kmh=args.velocidad,
-        broker_address='test.mosquitto.org',
+        broker_address='test.mosquitto.org',  # Asegúrate de que coincida con el servidor
         broker_port=args.port
     )

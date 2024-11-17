@@ -3,7 +3,7 @@ Uso:
     python users.py --num_users <Y> --cuadricula_N <N> --cuadricula_M <M> --coord_file <archivo> --port <port> --server_address <address>
 
 Ejemplo:
-    python users.py --num_users 10 --cuadricula_N 50 --cuadricula_M 50 --coords coordenadas_Usuarios.txt --port 5555 --server_address 192.168.0.9
+    python users.py --num_users 1 --cuadricula_N 50 --cuadricula_M 50 --coords coordenadas_Usuarios.txt --port 5555 --server_address 192.168.0.9
 """
 
 import argparse
@@ -49,7 +49,7 @@ def usuario_thread(user_id, pos_x, pos_y, tiempo_min, server_address, server_por
         tiempo_programa = tiempo_respuesta  # 1 segundo real = 1 minuto programa
         if respuesta.startswith("OK"):
             taxi_id = respuesta.split()[1]
-            print(f"Usuario {user_id} ha obtenido un taxi (ID: {taxi_id}) en {tiempo_programa:.2f} minutos.")
+            print(f"Usuario {user_id} ha obtenido un taxi (ID: {taxi_id}) en {tiempo_programa} minutos.")
         else:
             print(f"Usuario {user_id} no pudo obtener un taxi. Respuesta: {respuesta}")
     else:
