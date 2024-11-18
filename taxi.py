@@ -14,6 +14,7 @@ import argparse
 import sys
 import paho.mqtt.client as mqtt
 
+
 def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_address, broker_port):
     """
     Función principal para el proceso del taxi.
@@ -29,7 +30,10 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
 
     N, M = tam_cuadricula
     x, y = pos_inicial  # Posición actual del taxi
-    minutos_transcurridos = 0
+    x_initial, y_initial = pos_inicial  # Guardar posición inicial para regresar
+    servicios_completados = 0  # Contador de servicios
+    max_servicios = 3  # Límite de servicios por jornada
+    tiempo_total = 0  # Tiempo acumulado del taxi en minutos
 
     # Independencia entre hilos
     lock = threading.Lock()
@@ -61,16 +65,21 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
             if len(topic_parts) != 3 or topic_parts[0] != 'taxis' or topic_parts[2] != 'servicio':
                 return
 
-            # Mensaje de servicio: "Usuario {user_id} en (x, y)"
+            # Mensaje de servicio: "Usuario {user_id}, {x} {y}"
             mensaje = msg.payload.decode()
-            partes = mensaje.split()
-            if len(partes) < 5:
+            partes = mensaje.split(',')
+            if len(partes) != 2:
+                print(f"Taxi {taxi_id} recibió mensaje malformado: {mensaje}")
                 return
-            user_id = partes[1]
-            user_x = int(partes[3].strip('(').strip(','))
-            user_y = int(partes[4].strip(')'))
+            user_id = partes[0].strip().split()[1]
+            user_coords = partes[1].strip().split()
+            if len(user_coords) != 2:
+                print(f"Taxi {taxi_id} recibió coordenadas malformadas: {partes[1]}")
+                return
+            user_x = int(user_coords[0])
+            user_y = int(user_coords[1])
 
-            # Simular mover al usuario
+            # Notificar que está recogiendo al usuario
             mover_al_usuario(user_id, user_x, user_y)
 
         except Exception as e:
@@ -78,21 +87,25 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
 
     def mover_al_usuario(user_id, user_x, user_y):
         """
-        Simular el movimiento del taxi hacia la posición del usuario.
+        Notificar al usuario que el taxi está recogiendo.
 
         Parámetros:
             user_id (str): Identificador del usuario.
             user_x (int): Posición x del usuario.
             user_y (int): Posición y del usuario.
         """
-        nonlocal x, y, minutos_transcurridos, objetivo_usuario
+        nonlocal servicios_completados, objetivo_usuario, tiempo_total
         with lock:
+            if servicios_completados >= max_servicios:
+                print(f"Taxi {taxi_id} no puede aceptar más servicios. Jornada laboral culminada.")
+                return
+
             if objetivo_usuario is not None:
                 print(f"Taxi {taxi_id} ya está atendiendo una solicitud. Ignorando nueva solicitud de Usuario {user_id}.")
                 return  # Ya está atendiendo a un usuario
 
             objetivo_usuario = (user_id, user_x, user_y)
-            print(f"Taxi {taxi_id} moviéndose hacia el Usuario {user_id} en ({user_x}, {user_y})")
+            print(f"Taxi {taxi_id} está recogiendo al Usuario {user_id} en ({user_x}, {user_y})")
             movimiento_usuario_event.set()
 
     def publicar_posicion():
@@ -109,77 +122,83 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     print(f"Posición inicial del Taxi {taxi_id}: ({x}, {y})")
     publicar_posicion()
 
-    def movimiento():
-        nonlocal x, y, minutos_transcurridos, objetivo_usuario
+    def movimiento_func():
+        nonlocal x, y, servicios_completados, objetivo_usuario, tiempo_total
 
         while True:
             if movimiento_usuario_event.is_set():
-                # Mover hacia el usuario
+                # Notificar recogida al usuario
                 user_id, user_x, user_y = objetivo_usuario
-                print(f"Taxi {taxi_id} se dirige hacia el usuario {user_id} en ({user_x}, {user_y})")
-                while (x, y) != (user_x, user_y):
-                    with lock:
-                        if x < user_x:
-                            x += 1
-                        elif x > user_x:
-                            x -= 1
-                        if y < user_y:
-                            y += 1
-                        elif y > user_y:
-                            y -= 1
-                        # Simular tiempo de movimiento por celda
-                        time.sleep(30 / velocidad_kmh)  # 1 segundo real = 1 minuto programa
+                print(f"Taxi {taxi_id} está recogiendo al Usuario {user_id} en ({user_x}, {user_y})")
 
-                    # No publicar cada movimiento, solo al llegar
-                # Llegó al usuario
-                print(f"Taxi {taxi_id} ha llegado al Usuario {user_id} en ({x}, {y})")
-                # Simular tiempo de servicio
-                tiempo_servicio = 30  # 30 segundos reales = 30 minutos programa
+                # Simular tiempo de servicio (30 segundos reales = 30 minutos simulados)
+                tiempo_servicio = 30  # segundos reales
                 print(f"Taxi {taxi_id} está realizando el servicio al Usuario {user_id} por {tiempo_servicio} segundos.")
-                time.sleep(tiempo_servicio)  # 1 segundo real = 1 minuto programa
+                time.sleep(tiempo_servicio)  # Dormir durante el servicio
+                tiempo_total += 30  # Incrementar en 30 minutos
 
                 # Notificar al servidor que el servicio ha sido completado
                 topic_completado = f"taxis/{taxi_id}/completado"
                 mensaje_completado = f"Taxi {taxi_id} ha completado el servicio para Usuario {user_id}."
                 client.publish(topic_completado, mensaje_completado)
-                print(f"Taxi {taxi_id} ha completado el servicio para Usuario {user_id}.")
+                print(f"Taxi {taxi_id} ha completado el servicio para Usuario {user_id}. Tiempo total: {tiempo_total} minutos.")
+
+                # Incrementar el contador de servicios
+                servicios_completados += 1
+
+                if servicios_completados >= max_servicios:
+                    # Notificar al servidor que la jornada ha finalizado
+                    topic_fin_jornada = f"taxis/{taxi_id}/fin_jornada"
+                    mensaje_fin_jornada = "Jornada laboral culminada. No puede aceptar más servicios."
+                    client.publish(topic_fin_jornada, mensaje_fin_jornada)
+                    print(f"Taxi {taxi_id} ha alcanzado el límite de servicios. Notificando fin de jornada.")
+                    movimiento_usuario_event.clear()
+                    objetivo_usuario = None
+                    break  # Detener el hilo de movimiento
+
+                # Retornar inmediatamente a la posición inicial
+                print(f"Taxi {taxi_id} regresando a la posición inicial ({x_initial}, {y_initial}).")
+                x, y = x_initial, y_initial  # Retornar a la posición inicial
+                publicar_posicion()
+                print(f"Taxi {taxi_id} ha regresado a la posición inicial ({x}, {y}). Tiempo total: {tiempo_total} minutos.")
 
                 # Resetear el objetivo
-                with lock:
-                    objetivo_usuario = None
+                objetivo_usuario = None
                 movimiento_usuario_event.clear()
+
             else:
                 # Movimiento aleatorio cada 30 segundos
                 with lock:
+                    # Realizar movimientos aleatorios según la velocidad
                     celdas_a_mover = {1: 0, 2: 1, 4: 2}.get(velocidad_kmh, 1)
                     for _ in range(celdas_a_mover):
                         dx, dy = random.choice([(0, 1), (0, -1), (1, 0), (-1, 0)])  # Movimiento aleatorio
                         nuevo_x, nuevo_y = x + dx, y + dy
 
                         # Validar límites de la cuadrícula
-                        if 0 <= nuevo_x < N and 0 <= nuevo_y < M:
+                        if 0 <= nuevo_x <= N and 0 <= nuevo_y <= M:
                             x, y = nuevo_x, nuevo_y
 
-                # Esperar el intervalo antes de publicar
-                time.sleep(30)  # 30 segundos reales = 30 minutos programa
-                minutos_transcurridos += 30
-
-                # Publicar posición solo después de completar el intervalo
+                # Esperar el intervalo antes de mover nuevamente
+                time.sleep(30)  # 30 segundos reales = 30 minutos simulados
+                tiempo_total += 30  # Incrementar en 30 minutos
                 publicar_posicion()
-                print(f"Han transcurrido {minutos_transcurridos} minutos. Posición del taxi: ({x}, {y})")
+                print(f"Han transcurrido {tiempo_total} minutos. Posición del taxi: ({x}, {y}).")
 
     # Iniciar el hilo de movimiento
-    threading.Thread(target=movimiento, daemon=True).start()
+    hilo_movimiento = threading.Thread(target=movimiento_func, daemon=True)
+    hilo_movimiento.start()
 
     # Mantener el hilo principal activo
     try:
-        while True:
+        while hilo_movimiento.is_alive():
             time.sleep(1)
     except KeyboardInterrupt:
         print("Taxi detenido.")
         client.loop_stop()
         client.disconnect()
         sys.exit()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Proceso del Taxi")

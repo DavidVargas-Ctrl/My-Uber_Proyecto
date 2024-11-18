@@ -3,8 +3,9 @@ Uso:
     python server.py --cuadricula_N <N> --cuadricula_M <M> --zmq_port <zmq_port>
 
 Ejemplo:
-    python server.py --cuadricula_N 50 --cuadricula_M 50 --zmq_puerto 5555
+    python server.py --cuadricula_N 50 --cuadricula_M 50
 """
+
 import threading
 import time
 import argparse
@@ -32,6 +33,15 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
     disponibles_taxi = defaultdict(bool) # {taxi_id: True/False}
     disponibles_lock = threading.Lock()
 
+    servicios_completados = defaultdict(int)  # {taxi_id: servicios_completados}
+    servicios_lock = threading.Lock()
+
+    taxis_activos = set()  # IDs de taxis que han alcanzado su límite de servicios
+    taxis_activos_lock = threading.Lock()
+
+    registrados = set()  # IDs de taxis ya registrados
+    registrados_lock = threading.Lock()
+
     # Configuración de ZeroMQ
     context = zmq.Context()
     socket_zmq = context.socket(zmq.REP)
@@ -47,6 +57,7 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
             # Suscribirse a todos los tópicos de posición de taxis y completados
             client.subscribe("taxis/+/posicion")
             client.subscribe("taxis/+/completado")
+            client.subscribe("taxis/+/fin_jornada")
         else:
             print(f"Error al conectar al broker MQTT, código de retorno {rc}")
             sys.exit(1)
@@ -66,15 +77,24 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
                 x = int(x_str)
                 y = int(y_str)
 
-                with pos_lock, disponibles_lock:
+                with pos_lock, disponibles_lock, registrados_lock:
                     # Verificar si el taxi está dentro de los límites
                     if 0 <= x <= N and 0 <= y <= M:
                         new_registration = taxi_id not in pos_taxi
-                        pos_taxi[taxi_id] = (x, y)
                         if new_registration:
+                            with taxis_activos_lock:
+                                if taxi_id in taxis_activos:
+                                    # El taxi ha alcanzado su límite de servicios
+                                    respuesta = "ID Taxi inactivo. No puede registrarse."
+                                    client.publish(f"taxis/{taxi_id}/registro", respuesta)
+                                    print(f"Taxi {taxi_id} intentó registrarse pero ya ha culminado su jornada.")
+                                    return
+                            pos_taxi[taxi_id] = (x, y)
                             disponibles_taxi[taxi_id] = True  # Marcar como disponible al registrarse
+                            registrados.add(taxi_id)
                             print(f"**Nuevo Taxi Registrado: ID {taxi_id} en posición ({x}, {y})**")
                         else:
+                            pos_taxi[taxi_id] = (x, y)
                             print(f"Posición actual del Taxi {taxi_id}: ({x}, {y})")
                     else:
                         print(f"Taxi {taxi_id} intentó moverse fuera de los límites. Posición actual: ({x}, {y})")
@@ -86,12 +106,27 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
 
             elif topic_parts[2] == 'completado':
                 # Manejar completación de servicio
-                with disponibles_lock:
+                with disponibles_lock, servicios_lock, taxis_activos_lock:
                     if disponibles_taxi[taxi_id] == False:
                         disponibles_taxi[taxi_id] = True
-                        print(f"Taxi {taxi_id} ha completado un servicio y ahora está disponible.")
+                        servicios_completados[taxi_id] += 1
+                        print(f"Taxi {taxi_id} ha completado un servicio y ahora está disponible. Total servicios: {servicios_completados[taxi_id]}")
+
+                        if servicios_completados[taxi_id] >= 3:
+                            # Taxi ha alcanzado el límite de servicios
+                            disponibles_taxi[taxi_id] = False  # No disponible para más servicios
+                            taxis_activos.add(taxi_id)
+                            print(f"Taxi {taxi_id} ha alcanzado el límite de servicios. No podrá aceptar más servicios.")
+                            # Notificar al taxi que su jornada ha terminado
+                            client.publish(f"taxis/{taxi_id}/fin_jornada", "Jornada laboral culminada. No puede aceptar más servicios.")
                     else:
                         print(f"Taxi {taxi_id} intenta completar un servicio pero ya está disponible.")
+            elif topic_parts[2] == 'fin_jornada':
+                # Manejar notificación de fin de jornada del taxi
+                with disponibles_lock, taxis_activos_lock:
+                    disponibles_taxi[taxi_id] = False
+                    taxis_activos.add(taxi_id)
+                    print(f"Taxi {taxi_id} ha notificado el fin de su jornada laboral.")
             else:
                 print(f"Mensaje recibido en tópico desconocido: {msg.topic}")
 
@@ -125,13 +160,13 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
 
                 if socket_zmq in socks and socks[socket_zmq] == zmq.POLLIN:
                     mensaje = socket_zmq.recv_string()
-                    user_id, user_x, user_y = map(int, mensaje.split())
+                    user_id, user_x, user_y = map(int, mensaje.split(','))
                     print(f"Recibida solicitud de Taxi para Usuario {user_id} en posición ({user_x}, {user_y})")
                     start_time = time.time()
 
-                    with pos_lock, disponibles_lock:
-                        # Filtrar taxis disponibles
-                        taxis_disponibles = [taxi for taxi, disponible in disponibles_taxi.items() if disponible]
+                    with pos_lock, disponibles_lock, taxis_activos_lock:
+                        # Filtrar taxis disponibles dentro de la cuadrícula y que no han terminado su jornada
+                        taxis_disponibles = [taxi for taxi, disponible in disponibles_taxi.items() if disponible and taxi not in taxis_activos]
                         if not taxis_disponibles:
                             respuesta = "NO Taxi disponibles en este momento."
                             socket_zmq.send_string(respuesta)
@@ -156,13 +191,13 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
                             socket_zmq.send_string(respuesta)
                             end_time = time.time()
                             tiempo_respuesta = end_time - start_time
-                            tiempo_programa = tiempo_respuesta  # 1 segundo real = 1 minuto
+                            tiempo_programa = 30.0  # Fijar el tiempo de servicio a 30 segundos
 
                             print(f"Asignado Taxi {taxi_seleccionado} al Usuario {user_id} en {tiempo_programa:.2f} minutos.")
 
                             # Notificar al taxi del servicio asignado
                             topic_servicio = f"taxis/{taxi_seleccionado}/servicio"
-                            mensaje_servicio = f"Usuario {user_id} en ({user_x}, {user_y})"
+                            mensaje_servicio = f"Usuario {user_id}, {user_x} {user_y}"
                             client.publish(topic_servicio, mensaje_servicio)
                             print(f"Notificado al Taxi {taxi_seleccionado} sobre el servicio asignado al Usuario {user_id}.")
                         else:
@@ -205,15 +240,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Proceso del Servidor")
     parser.add_argument('--cuadricula_N', type=int, required=True, help='Tamaño N de la cuadrícula')
     parser.add_argument('--cuadricula_M', type=int, required=True, help='Tamaño M de la cuadrícula')
-    parser.add_argument('--zmq_puerto', type=int, default=5555, help='Puerto para ZeroMQ')
-    parser.add_argument('--mqtt_broker_address', type=str, default='test.mosquitto.org', help='Dirección del broker MQTT')
-    parser.add_argument('--mqtt_broker_port', type=int, default=1883, help='Puerto del broker MQTT')
+    parser.add_argument('--broker_dir', type=str, default='test.mosquitto.org', help='Dirección del broker MQTT')
+    parser.add_argument('--broker_puerto', type=int, default=1883, help='Puerto del broker MQTT')
     args = parser.parse_args()
 
     proceso_servidor(
         N=args.cuadricula_N,
         M=args.cuadricula_M,
-        mqtt_broker_address=args.mqtt_broker_address,
-        mqtt_broker_port=args.mqtt_broker_port,
-        zmq_port=args.zmq_puerto
+        mqtt_broker_address=args.mqtt_broker_dir,
+        mqtt_broker_port=args.broker_puerto,
+        zmq_port=5555
     )

@@ -1,9 +1,11 @@
+# users.py
+
 """
 Uso:
     python users.py --num_users <Y> --cuadricula_N <N> --cuadricula_M <M> --coord_file <archivo> --port <port> --server_address <address>
 
 Ejemplo:
-    python users.py --num_users 1 --cuadricula_N 50 --cuadricula_M 50 --coords coordenadas_Usuarios.txt --port 5555 --server_address 192.168.0.9
+    python usuarios.py --num_usuarios 1 --cuadricula_N 50 --cuadricula_M 50 --coords coordenadas_Usuarios.txt --server 192.168.0.5
 """
 
 import argparse
@@ -26,13 +28,14 @@ def usuario_thread(user_id, pos_x, pos_y, tiempo_min, server_address, server_por
         server_port (int): Puerto del servidor ZeroMQ.
     """
     print(f"Usuario {user_id} en posicion ({pos_x}, {pos_y}) solicitara un taxi en {tiempo_min} segundos.")
+    tiempo_inicio = time.time()
     time.sleep(tiempo_min)  # Dormir t segundos representando t minutos
 
     context = zmq.Context()
     socket = context.socket(zmq.REQ)
     socket.connect(f"tcp://{server_address}:{server_port}")
 
-    mensaje = f"{user_id} {pos_x} {pos_y}"
+    mensaje = f"{user_id},{pos_x},{pos_y}"
     start_time = time.time()
     socket.send_string(mensaje)
     print(f"Usuario {user_id} ha enviado solicitud al servidor: '{mensaje}'")
@@ -46,10 +49,11 @@ def usuario_thread(user_id, pos_x, pos_y, tiempo_min, server_address, server_por
         respuesta = socket.recv_string()
         end_time = time.time()
         tiempo_respuesta = end_time - start_time
-        tiempo_programa = tiempo_respuesta  # 1 segundo real = 1 minuto programa
+        tiempo_total = end_time - tiempo_inicio  # Incluir tiempo de espera antes de solicitar
+        tiempo_programa = tiempo_total  # 1 segundo real = 1 minuto programa
         if respuesta.startswith("OK"):
             taxi_id = respuesta.split()[1]
-            print(f"Usuario {user_id} ha obtenido un taxi (ID: {taxi_id}) en {tiempo_programa} minutos.")
+            print(f"Usuario {user_id} ha obtenido un taxi (ID: {taxi_id}) en {tiempo_programa:.1f} minutos.")
         else:
             print(f"Usuario {user_id} no pudo obtener un taxi. Respuesta: {respuesta}")
     else:
@@ -119,12 +123,11 @@ def proceso_generador_users(num_users, N, M, coord_file, broker_address, broker_
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Proceso Generador de Usuarios")
-    parser.add_argument('--num_users', type=int, required=True, help='Numero de usuarios a generar (Y)')
+    parser.add_argument('--num_usuarios', type=int, required=True, help='Numero de usuarios a generar (Y)')
     parser.add_argument('--cuadricula_N', type=int, required=True, help='Tamaño N de la cuadrícula')
     parser.add_argument('--cuadricula_M', type=int, required=True, help='Tamaño M de la cuadrícula')
     parser.add_argument('--coords', type=str, required=True, help='Archivo de coordenadas iniciales')
-    parser.add_argument('--port', type=int, default=5555, help='Puerto del servidor ZeroMQ (default: 5555)')
-    parser.add_argument('--server_address', type=str, default='localhost', help='Dirección del servidor ZeroMQ (default: localhost)')
+    parser.add_argument('--server', type=str, default='localhost', help='Dirección del servidor ZeroMQ (default: localhost)')
     args = parser.parse_args()
 
     proceso_generador_users(
@@ -132,6 +135,6 @@ if __name__ == "__main__":
         N=args.cuadricula_N,
         M=args.cuadricula_M,
         coord_file=args.coords,
-        broker_address=args.server_address,  # Usar la direccion correcta del servidor
-        broker_port=args.port
+        broker_address=args.server_address,
+        broker_port=5555
     )
