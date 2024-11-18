@@ -5,6 +5,8 @@ Uso:
 Ejemplos:
     python taxi.py --taxi_id 1 --cuadricula_N 50 --cuadricula_M 50 --init_x 5 --init_y 5 --velocidad 2 --port 1883
     python taxi.py --taxi_id 3 --cuadricula_N 50 --cuadricula_M 50 --init_x 6 --init_y 7 --velocidad 4 --port 1883
+    python taxi.py --taxi_id 2 --cuadricula_N 50 --cuadricula_M 50 --init_x 6 --init_y 7 --velocidad 1 --port 1883
+    python taxi.py --taxi_id 4 --cuadricula_N 50 --cuadricula_M 50 --init_x 45 --init_y 37 --velocidad 4 --port 1883
 """
 
 import time
@@ -158,7 +160,8 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
 
                 # Retornar inmediatamente a la posición inicial
                 print(f"Taxi {taxi_id} regresando a la posición inicial ({x_initial}, {y_initial}).")
-                x, y = x_initial, y_initial  # Retornar a la posición inicial
+                with lock:
+                    x, y = x_initial, y_initial  # Retornar a la posición inicial
                 publicar_posicion()
                 print(f"Taxi {taxi_id} ha regresado a la posición inicial ({x}, {y}). Tiempo total: {tiempo_total} minutos.")
 
@@ -167,10 +170,22 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
                 movimiento_usuario_event.clear()
 
             else:
-                # Movimiento aleatorio cada 30 segundos
+                # Movimiento aleatorio según la velocidad
                 with lock:
-                    # Realizar movimientos aleatorios según la velocidad
-                    celdas_a_mover = {1: 0, 2: 1, 4: 2}.get(velocidad_kmh, 1)
+                    # Definir celdas a mover y tiempo de espera basado en la velocidad
+                    if velocidad_kmh == 1:
+                        celdas_a_mover = 1
+                        sleep_time = 60  # 60 segundos reales = 60 minutos simulados
+                    elif velocidad_kmh == 2:
+                        celdas_a_mover = 1
+                        sleep_time = 30  # 30 segundos reales = 30 minutos simulados
+                    elif velocidad_kmh == 4:
+                        celdas_a_mover = 2
+                        sleep_time = 30  # 30 segundos reales = 30 minutos simulados
+                    else:
+                        celdas_a_mover = 1
+                        sleep_time = 30  # Valor por defecto
+
                     for _ in range(celdas_a_mover):
                         dx, dy = random.choice([(0, 1), (0, -1), (1, 0), (-1, 0)])  # Movimiento aleatorio
                         nuevo_x, nuevo_y = x + dx, y + dy
@@ -180,8 +195,8 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
                             x, y = nuevo_x, nuevo_y
 
                 # Esperar el intervalo antes de mover nuevamente
-                time.sleep(30)  # 30 segundos reales = 30 minutos simulados
-                tiempo_total += 30  # Incrementar en 30 minutos
+                time.sleep(sleep_time)  # Sleep según la velocidad
+                tiempo_total += sleep_time  # Incrementar en minutos simulados
                 publicar_posicion()
                 print(f"Han transcurrido {tiempo_total} minutos. Posición del taxi: ({x}, {y}).")
 

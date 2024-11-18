@@ -1,6 +1,6 @@
 """
 Uso:
-    python server.py --cuadricula_N <N> --cuadricula_M <M> --zmq_port <zmq_port>
+    python server.py --cuadricula_N <N> --cuadricula_M <M>
 
 Ejemplo:
     python server.py --cuadricula_N 50 --cuadricula_M 50
@@ -240,14 +240,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Proceso del Servidor")
     parser.add_argument('--cuadricula_N', type=int, required=True, help='Tamaño N de la cuadrícula')
     parser.add_argument('--cuadricula_M', type=int, required=True, help='Tamaño M de la cuadrícula')
-    parser.add_argument('--broker_dir', type=str, default='test.mosquitto.org', help='Dirección del broker MQTT')
-    parser.add_argument('--broker_puerto', type=int, default=1883, help='Puerto del broker MQTT')
     args = parser.parse_args()
 
     proceso_servidor(
         N=args.cuadricula_N,
         M=args.cuadricula_M,
-        mqtt_broker_address=args.mqtt_broker_dir,
-        mqtt_broker_port=args.broker_puerto,
+        mqtt_broker_address='test.mosquitto.org',
+        mqtt_broker_port=1883,
         zmq_port=5555
     )
