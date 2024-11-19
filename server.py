@@ -164,10 +164,11 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
                     print(f"Recibida solicitud de Taxi para Usuario {user_id} en posición ({user_x}, {user_y})")
                     start_time = time.time()
 
-                    with pos_lock, disponibles_lock, taxis_activos_lock:
+                    with disponibles_lock:
                         # Filtrar taxis disponibles dentro de la cuadrícula y que no han terminado su jornada
                         taxis_disponibles = [taxi for taxi, disponible in disponibles_taxi.items() if disponible and taxi not in taxis_activos]
                         if not taxis_disponibles:
+                            # No hay taxis disponibles actualmente, informar al usuario que debe esperar
                             respuesta = "NO Taxi disponibles en este momento."
                             socket_zmq.send_string(respuesta)
                             print(f"Respuesta a Usuario {user_id}: {respuesta}")
@@ -193,7 +194,7 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
                             tiempo_respuesta = end_time - start_time
                             tiempo_programa = 30.0  # Fijar el tiempo de servicio a 30 segundos
 
-                            print(f"Asignado Taxi {taxi_seleccionado} al Usuario {user_id} en {tiempo_programa:.2f} minutos.")
+                            print(f"Asignado Taxi {taxi_seleccionado} al Usuario {user_id}")
 
                             # Notificar al taxi del servicio asignado
                             topic_servicio = f"taxis/{taxi_seleccionado}/servicio"
@@ -201,7 +202,8 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
                             client.publish(topic_servicio, mensaje_servicio)
                             print(f"Notificado al Taxi {taxi_seleccionado} sobre el servicio asignado al Usuario {user_id}.")
                         else:
-                            respuesta = "NO Taxi disponibles."
+                            # No se encontró ningún taxi disponible después de la espera
+                            respuesta = "NO Taxi disponibles en este momento."
                             socket_zmq.send_string(respuesta)
                             print(f"Respuesta a Usuario {user_id}: {respuesta}")
 

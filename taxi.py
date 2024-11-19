@@ -135,7 +135,7 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
 
                 # Simular tiempo de servicio (30 segundos reales = 30 minutos simulados)
                 tiempo_servicio = 30  # segundos reales
-                print(f"Taxi {taxi_id} está realizando el servicio al Usuario {user_id} por {tiempo_servicio} segundos.")
+                print(f"Taxi {taxi_id} está realizando el servicio al Usuario {user_id} por {tiempo_servicio} minutos.")
                 time.sleep(tiempo_servicio)  # Dormir durante el servicio
                 tiempo_total += 30  # Incrementar en 30 minutos
 

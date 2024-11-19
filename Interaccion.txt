@@ -1,0 +1,20 @@
+Registro de Interacciones del Sistema de Taxis
+==================================================
+
+Taxis Registrados:
+ID Taxi	Posición (x,y)	Servicios Realizados
+--------------------------------------------------
+
+Asignaciones de Servicios:
+ID Usuario	ID Taxi	Posición Usuario (x,y)	Posición Taxi (x,y)
+--------------------------------------------------
+
+Servicios Negados:
+ID Usuario	Razón
+--------------------------------------------------
+
+Servidor MQTT conectado al broker exitosamente.
+3	(6,7)	0
+4	(45,37)	0
+Taxi 3	Posición Actualizada	(5,6)
+Taxi 4	Posición Actualizada	(46,38)
