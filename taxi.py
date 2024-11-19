@@ -16,6 +16,34 @@ import argparse
 import sys
 import paho.mqtt.client as mqtt
 
+# Configuración de los brokers MQTT
+PRIMARY_BROKER_ADDRESS = "test.mosquitto.org"
+PRIMARY_BROKER_PORT = 1883
+SECONDARY_BROKER_ADDRESS = "broker.hivemq.com"
+SECONDARY_BROKER_PORT = 1883
+
+def conectar_broker(client, primary=True):
+    """
+    Conecta al broker primario o secundario.
+
+    Parámetros:
+        client (mqtt.Client): Cliente MQTT.
+        primary (bool): Si True, intenta conectarse al broker primario; si False, al secundario.
+    """
+    broker_address = PRIMARY_BROKER_ADDRESS if primary else SECONDARY_BROKER_ADDRESS
+    broker_port = PRIMARY_BROKER_PORT if primary else SECONDARY_BROKER_PORT
+
+    try:
+        client.connect(broker_address, broker_port, 60)
+        print(f"Conectado al {'primario' if primary else 'secundario'} broker MQTT: {broker_address}:{broker_port}")
+    except Exception as e:
+        if primary:
+            print(f"Error al conectar al broker primario: {e}. Intentando conectar al secundario...")
+            conectar_broker(client, primary=False)
+        else:
+            print(f"Error al conectar al broker secundario: {e}. Finalizando aplicación.")
+            sys.exit(1)
+
 
 def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_address, broker_port):
     """
@@ -40,10 +68,6 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     # Independencia entre hilos
     lock = threading.Lock()
 
-    # Configuración del cliente MQTT
-    client = mqtt.Client(client_id=f"Taxi_{taxi_id}")
-    client.connect(broker_address, broker_port, 60)
-    client.loop_start()
 
     # Configuración del tópico al que se está publicando posiciones
     topic_posicion = f"taxis/{taxi_id}/posicion"
@@ -86,7 +110,17 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
 
         except Exception as e:
             print(f"Taxi {taxi_id} error al procesar mensaje de servicio: {e}")
+    
+    # Configuración del cliente MQTT
+    client = mqtt.Client(client_id=f"Taxi_{taxi_id}")
+    client.on_connect = on_connect
+    client.on_message = on_message
 
+    # Conexión al broker MQTT con respaldo
+    conectar_broker(client)
+
+    client.loop_start()
+    
     def mover_al_usuario(user_id, user_x, user_y):
         """
         Notificar al usuario que el taxi está recogiendo.

@@ -15,6 +15,34 @@ import paho.mqtt.client as mqtt
 import zmq
 import signal
 
+# Configuración de los brokers MQTT
+PRIMARY_BROKER_ADDRESS = "test.mosquitto.org"
+PRIMARY_BROKER_PORT = 1883
+SECONDARY_BROKER_ADDRESS = "broker.hivemq.com"
+SECONDARY_BROKER_PORT = 1883
+
+def conectar_broker(client, primary=True):
+    """
+    Conecta al broker primario o secundario.
+
+    Parámetros:
+        client (mqtt.Client): Cliente MQTT.
+        primary (bool): Si True, intenta conectarse al broker primario; si False, al secundario.
+    """
+    broker_address = PRIMARY_BROKER_ADDRESS if primary else SECONDARY_BROKER_ADDRESS
+    broker_port = PRIMARY_BROKER_PORT if primary else SECONDARY_BROKER_PORT
+
+    try:
+        client.connect(broker_address, broker_port, 60)
+        print(f"Conectado al {'primario' if primary else 'secundario'} broker MQTT: {broker_address}:{broker_port}")
+    except Exception as e:
+        if primary:
+            print(f"Error al conectar al broker primario: {e}. Intentando conectar al secundario...")
+            conectar_broker(client, primary=False)
+        else:
+            print(f"Error al conectar al broker secundario: {e}. Finalizando aplicación.")
+            sys.exit(1)
+
 def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
     """
     Función principal para el proceso del servidor.
@@ -139,11 +167,8 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
     client.on_connect = conexion
     client.on_message = mensaje
 
-    try:
-        client.connect(mqtt_broker_address, mqtt_broker_port, 60)
-    except Exception as e:
-        print(f"No se pudo conectar al broker MQTT: {e}")
-        sys.exit(1)
+    # Conexión al broker MQTT con respaldo
+    conectar_broker(client)
 
     client.loop_start()
 
