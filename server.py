@@ -1,11 +1,3 @@
-"""
-Uso:
-    python server.py --cuadricula_N <N> --cuadricula_M <M>
-
-Ejemplo:
-    python server.py --cuadricula_N 50 --cuadricula_M 50
-"""
-
 import threading
 import time
 import argparse
@@ -15,14 +7,14 @@ import paho.mqtt.client as mqtt
 import zmq
 import signal
 
-def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
+def proceso_servidor(N, M, mqtt_brokers, mqtt_broker_port, zmq_port):
     """
     Función principal para el proceso del servidor.
 
     Parámetros:
         N (int): Tamaño N (filas) de la cuadrícula.
         M (int): Tamaño M (columnas) de la cuadrícula.
-        mqtt_broker_address (str): Dirección del broker MQTT.
+        mqtt_brokers (list): Lista de direcciones de brokers MQTT.
         mqtt_broker_port (int): Puerto del broker MQTT.
         zmq_port (int): Puerto para el servidor ZeroMQ.
     """
@@ -60,6 +52,25 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
             client.subscribe("taxis/+/fin_jornada")
         else:
             print(f"Error al conectar al broker MQTT, código de retorno {rc}")
+            # Intentar conectarse al siguiente broker
+            reconnect_to_next_broker(client)
+
+    def reconnect_to_next_broker(client):
+        """
+        Intentar conectarse al siguiente broker en la lista.
+        """
+        nonlocal current_broker_index
+        current_broker_index += 1
+        if current_broker_index < len(mqtt_brokers):
+            next_broker = mqtt_brokers[current_broker_index]
+            print(f"Intentando conectar al siguiente broker MQTT: {next_broker}")
+            try:
+                client.connect(next_broker, mqtt_broker_port, 60)
+            except Exception as e:
+                print(f"No se pudo conectar al broker MQTT: {e}")
+                reconnect_to_next_broker(client)
+        else:
+            print("No hay más brokers disponibles para intentar.")
             sys.exit(1)
 
     def mensaje(client, userdata, msg):
@@ -139,11 +150,13 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port):
     client.on_connect = conexion
     client.on_message = mensaje
 
+    current_broker_index = 0
+
     try:
-        client.connect(mqtt_broker_address, mqtt_broker_port, 60)
+        client.connect(mqtt_brokers[current_broker_index], mqtt_broker_port, 60)
     except Exception as e:
         print(f"No se pudo conectar al broker MQTT: {e}")
-        sys.exit(1)
+        reconnect_to_next_broker(client)
 
     client.loop_start()
 
@@ -244,10 +257,12 @@ if __name__ == "__main__":
     parser.add_argument('--cuadricula_M', type=int, required=True, help='Tamaño M de la cuadrícula')
     args = parser.parse_args()
 
+    mqtt_brokers = ['invalid.broker.address', 'test.mosquitto.org', 'broker.hivemq.com']  # Lista de brokers MQTT
+    
     proceso_servidor(
         N=args.cuadricula_N,
         M=args.cuadricula_M,
-        mqtt_broker_address='test.mosquitto.org',
+        mqtt_brokers=mqtt_brokers,
         mqtt_broker_port=1883,
         zmq_port=5555
     )
