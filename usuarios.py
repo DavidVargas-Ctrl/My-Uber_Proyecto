@@ -3,7 +3,7 @@ Uso:
     python users.py --num_users <Y> --cuadricula_N <N> --cuadricula_M <M> --coord_file <archivo> --port <port> --server_address <address>
 
 Ejemplo:
-    python usuarios.py --num_users 4 --cuadricula_N 50 --cuadricula_M 50 --coord_file coordenadas_Usuarios.txt --server_address 192.168.0.8 --port 5555
+    python usuarios.py --num_users 3 --cuadricula_N 50 --cuadricula_M 50 --coord_file coordenadas_Usuarios.txt --server_address 192.168.0.9 --port 5555
 """
 
 import argparse
