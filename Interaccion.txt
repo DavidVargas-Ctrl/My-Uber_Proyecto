@@ -1,64 +1,54 @@
 Registro de taxis
 
 Taxi 3, 6 7
+6 5
+7 4
+9 4
+9 4
 6 7
-6 7
-7 8
-8 7
-7 6
-8 5
-8 7
-6 7
-6 7
+5 6
 6 7
 6 7
 Servicios
 3
 Servicios asignados
-8 5, 2 5
-8 7, 8 9
-6 7, 41 42
+9 4, 41 42
+9 4, 41 42
+5 6, 41 42
 Disponible: No
 
 Taxi 4, 45 37
 46 36
-46 36
-46 36
-46 36
 44 36
+44 38
+44 38
+45 37
+45 35
 45 37
 46 36
-44 36
-45 37
-45 39
-45 37
-46 38
 Servicios
 3
 Servicios asignados
-46 36, 42 24
-45 37, 11 11
-45 37, 42 24
+44 38, 42 24
+45 37, 2 5
+45 35, 42 24
 Disponible: No
 
 Taxi 11, 5 5
 6 5
-6 6
-7 6
-7 7
-7 6
-8 6
-8 5
+7 5
+7 4
+7 5
+5 5
+5 4
 5 5
 5 6
-5 5
-4 5
 Servicios
 3
 Servicios asignados
-8 6, 8 9
-8 5, 41 42
-5 6, 2 5
+7 4, 2 5
+5 5, 42 24
+5 4, 2 5
 Disponible: No
 
 Resumen de los servicios
@@ -67,16 +57,17 @@ Servicios aceptados
 9
 
 Servicios negados
-3
+5
 
 Servicios asignados
-8 5, 2 5
-8 7, 8 9
-6 7, 41 42
-46 36, 42 24
-45 37, 11 11
-45 37, 42 24
-8 6, 8 9
-8 5, 41 42
-5 6, 2 5
+9 4, 41 42
+9 4, 41 42
+5 6, 41 42
+44 38, 42 24
+45 37, 2 5
+45 35, 42 24
+7 4, 2 5
+5 5, 42 24
+5 4, 2 5
 
+Servidor detenido en 2024-11-20 16:22:01

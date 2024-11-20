@@ -14,6 +14,7 @@ from collections import defaultdict
 import paho.mqtt.client as mqtt
 import zmq
 import signal
+from datetime import datetime
 
 def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, intervalo_guardado):
     """
@@ -39,7 +40,7 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
     taxis_info_lock = threading.Lock()
 
     # Contadores globales
-    total_servicios = 0
+    total_servicios = 0  # Servicios asignados
     servicios_negados = 0
     contadores_lock = threading.Lock()
 
@@ -66,6 +67,43 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
         with log_lock:
             print(message)
 
+    def guardar_estado():
+        """
+        Función para guardar el estado actual del sistema en el archivo de registro.
+        """
+        with taxis_info_lock, contadores_lock, log_lock:
+            with open(log_file, 'w') as f:
+                # Registro de taxis
+                f.write("Registro de taxis\n\n")
+                for taxi_id, info in sorted(taxis_info.items()):
+                    if info['initial_pos']:
+                        f.write(f"Taxi {taxi_id}, {info['initial_pos'][0]} {info['initial_pos'][1]}\n")
+                        for pos in info['positions'][1:]:
+                            f.write(f"{pos[0]} {pos[1]}\n")
+                        f.write(f"Servicios\n{info['servicios_completados']}\n")
+                        f.write("Servicios asignados\n")
+                        for servicio in info['servicios_asignados']:
+                            pos_taxi, pos_usuario = servicio
+                            f.write(f"{pos_taxi[0]} {pos_taxi[1]}, {pos_usuario[0]} {pos_usuario[1]}\n")
+                        f.write(f"Disponible: {'Sí' if info['available'] else 'No'}\n\n")
+
+                # Resumen de los servicios
+                f.write("Resumen de los servicios\n\n")
+                f.write("Servicios aceptados\n")
+                f.write(f"{total_servicios}\n\n")
+                f.write("Servicios negados\n")
+                f.write(f"{servicios_negados}\n\n")
+
+                # Servicios asignados
+                f.write("Servicios asignados\n")
+                for taxi_id, info in sorted(taxis_info.items()):
+                    for servicio in info['servicios_asignados']:
+                        pos_taxi, pos_usuario = servicio
+                        f.write(f"{pos_taxi[0]} {pos_taxi[1]}, {pos_usuario[0]} {pos_usuario[1]}\n")
+                f.write("\n")
+
+        log_event("Estado actual del sistema guardado en Interaccion.txt")
+
     def conexion(client, userdata, flags, rc, properties=None):
         if rc == 0:
             log_event("Servidor MQTT conectado al broker exitosamente.")
@@ -79,7 +117,7 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
             with contadores_lock:
                 nonlocal servicios_negados
                 servicios_negados += 1
-            actualizar_resumen_servicios()
+            guardar_estado()
             sys.exit(1)
 
     def mensaje(client, userdata, msg):
@@ -118,7 +156,7 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
                             log_event(intento_msg)
                             with contadores_lock:
                                 servicios_negados += 1
-                            actualizar_resumen_servicios()
+                            guardar_estado()
                             return
                         taxis_info[taxi_id]['initial_pos'] = (x, y)
                         taxis_info[taxi_id]['positions'].append((x, y))
@@ -136,7 +174,6 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
                 with taxis_info_lock, contadores_lock:
                     if taxis_info[taxi_id]['servicios_completados'] < 3:
                         taxis_info[taxi_id]['servicios_completados'] += 1
-                        total_servicios += 1
                         completado_msg = f"Taxi {taxi_id} ha completado un servicio. Total servicios: {taxis_info[taxi_id]['servicios_completados']}"
                         log_event(completado_msg)
 
@@ -148,14 +185,12 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
                             log_event(limite_msg)
                             # Notificar al taxi que su jornada ha terminado
                             client.publish(f"taxis/{taxi_id}/fin_jornada", "Jornada laboral culminada. No puede aceptar más servicios.")
-                            # Actualizar resumen de servicios aceptados
-                            actualizar_resumen_servicios()
                     else:
                         disponible_msg = f"Taxi {taxi_id} intenta completar un servicio pero ya ha alcanzado su límite."
                         log_event(disponible_msg)
                         with contadores_lock:
                             servicios_negados += 1
-                        actualizar_resumen_servicios()
+                        guardar_estado()
 
             elif topic_parts[2] == 'fin_jornada':
                 # Manejar notificación de fin de jornada del taxi
@@ -164,7 +199,7 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
                     taxis_info[taxi_id]['available'] = False  # Marcar como no disponible
                     fin_jornada_msg = f"Taxi {taxi_id} ha notificado el fin de su jornada laboral."
                     log_event(fin_jornada_msg)
-                actualizar_resumen_servicios()
+                guardar_estado()
             else:
                 desconocido_msg = f"Mensaje recibido en tópico desconocido: {msg.topic}"
                 log_event(desconocido_msg)
@@ -175,16 +210,8 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
             log_event(error_msg)
             with contadores_lock:
                 servicios_negados += 1
-            actualizar_resumen_servicios()
+            guardar_estado()
             return
-
-    def actualizar_resumen_servicios():
-        """
-        Función para actualizar el resumen de servicios en el archivo de registro.
-        """
-        with contadores_lock, log_lock:
-            # No es necesario escribir aquí, ya que guardar_estado se encarga de escribir periódicamente
-            pass
 
     # Configuración del cliente MQTT con protocolo actualizado
     client = mqtt.Client(client_id="Servidor", protocol=mqtt.MQTTv5)
@@ -225,6 +252,7 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
                         socket_zmq.send_string("Formato de solicitud incorrecto.")
                         with contadores_lock:
                             servicios_negados += 1
+                        guardar_estado()
                         continue
 
                     solicitud_msg = f"{user_id}\t({user_x},{user_y})"
@@ -279,10 +307,10 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
                                     client.publish(topic_servicio, mensaje_servicio)
                                     log_event(f"Notificado al Taxi {taxi_seleccionado} sobre el servicio asignado al Usuario {user_id}.")
 
-                                    # Actualizar el estado en el archivo
-                                    return  # Salir de la función para evitar múltiples actualizaciones
+                                    break  # Salir del loop de espera
 
                         if asignacion_exitosa:
+                            guardar_estado()
                             break
 
                         time.sleep(1)  # Esperar 1 segundo antes de volver a intentar
@@ -295,7 +323,6 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
                         log_event(negado_msg)
                         with contadores_lock:
                             servicios_negados += 1
-                        # Actualizar el estado en el archivo
                         guardar_estado()
 
             except zmq.ContextTerminated:
@@ -311,43 +338,6 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
     # Iniciar el hilo para manejar solicitudes de usuarios
     thread_zmq = threading.Thread(target=manejar_solicitudes_zmq)
     thread_zmq.start()
-
-    def guardar_estado():
-        """
-        Función para guardar el estado actual del sistema en el archivo de registro periódicamente.
-        """
-        with taxis_info_lock, contadores_lock, log_lock:
-            with open(log_file, 'w') as f:
-                # Registro de taxis
-                f.write("Registro de taxis\n\n")
-                for taxi_id, info in taxis_info.items():
-                    if info['initial_pos']:
-                        f.write(f"Taxi {taxi_id}, {info['initial_pos'][0]} {info['initial_pos'][1]}\n")
-                        for pos in info['positions'][1:]:
-                            f.write(f"{pos[0]} {pos[1]}\n")
-                        f.write(f"Servicios\n{info['servicios_completados']}\n")
-                        f.write("Servicios asignados\n")
-                        for servicio in info['servicios_asignados']:
-                            pos_taxi, pos_usuario = servicio
-                            f.write(f"{pos_taxi[0]} {pos_taxi[1]}, {pos_usuario[0]} {pos_usuario[1]}\n")
-                        f.write(f"Disponible: {'Sí' if info['available'] else 'No'}\n\n")
-
-                # Resumen de los servicios
-                f.write("Resumen de los servicios\n\n")
-                f.write("Servicios aceptados\n")
-                f.write(f"{total_servicios}\n\n")
-                f.write("Servicios negados\n")
-                f.write(f"{servicios_negados}\n\n")
-
-                # Servicios asignados
-                f.write("Servicios asignados\n")
-                for taxi_id, info in taxis_info.items():
-                    for servicio in info['servicios_asignados']:
-                        pos_taxi, pos_usuario = servicio
-                        f.write(f"{pos_taxi[0]} {pos_taxi[1]}, {pos_usuario[0]} {pos_usuario[1]}\n")
-                f.write("\n")
-
-        log_event("Estado actual del sistema guardado en Interaccion.txt")
 
     def guardar_estado_periodicamente():
         """
@@ -376,6 +366,11 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
 
         # Registrar resumen de servicios al cerrar
         guardar_estado()
+
+        # Añadir mensaje de cierre con timestamp
+        with log_lock:
+            with open(log_file, 'a') as f:
+                f.write(f"Servidor detenido\n")
 
         log_event("Resumen de servicios registrado en Interaccion.txt")
         sys.exit(0)
