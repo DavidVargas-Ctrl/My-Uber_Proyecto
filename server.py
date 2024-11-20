@@ -1,3 +1,12 @@
+"""
+Uso:
+    python server.py --cuadricula_N <N> --cuadricula_M <M>
+
+Ejemplo:
+    python server.py --cuadricula_N 50 --cuadricula_M 50
+"""
+
+
 import threading
 import time
 import argparse
@@ -258,7 +267,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     mqtt_brokers = ['invalid.broker.address', 'test.mosquitto.org', 'broker.hivemq.com']  # Lista de brokers MQTT
-    
+
     proceso_servidor(
         N=args.cuadricula_N,
         M=args.cuadricula_M,
