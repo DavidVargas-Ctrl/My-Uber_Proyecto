@@ -1,9 +1,9 @@
 """
 Uso:
-    python users.py --num_users <Y> --cuadricula_N <N> --cuadricula_M <M> --coord_file <archivo> --port <port> --server_address <address>
+    python users.py --num_usuarios <Y> --cuadricula_N <N> --cuadricula_M <M> --coords <archivo> --server_address <address>
 
 Ejemplo:
-    python usuarios.py --num_users 3 --cuadricula_N 50 --cuadricula_M 50 --coord_file coordenadas_Usuarios.txt --server_address 192.168.0.9 --port 5555
+    python3 usuarios.py --num_usuarios 3 --cuadricula_N 50 --cuadricula_M 50 --coords coordenadas_Usuarios.txt --server_address 192.168.0.9
 """
 
 import argparse
@@ -26,7 +26,7 @@ def usuario_thread(user_id, pos_x, pos_y, tiempo_min, server_address, server_por
     """
     print(f"Usuario {user_id} en posicion ({pos_x}, {pos_y}) solicitara un taxi en {tiempo_min} minutos.")
     tiempo_inicio = time.time()
-    time.sleep(tiempo_min)  # Dormir t segundos representando t minutos simulados (1 segundo real = 1 minuto programa)
+    time.sleep(tiempo_min)
 
     context = zmq.Context()
     socket = context.socket(zmq.REQ)
@@ -48,7 +48,7 @@ def usuario_thread(user_id, pos_x, pos_y, tiempo_min, server_address, server_por
             print(f"Usuario {user_id} ha obtenido un taxi (ID: {taxi_id}) en {tiempo_total_min} minutos.")
         elif respuesta == "NO Taxi disponibles en este momento.":
             print(f"Usuario {user_id} debe esperar 60 minutos para intentar obtener un taxi.")
-            # Esperar 60 minutos antes de reintentar (60 segundos reales)
+            # Esperar 60 minutos antes de reintentar
             time.sleep(60)
             # Reintentar la solicitud
             socket.send_string(mensaje)
@@ -162,19 +162,18 @@ def proceso_generador_users(num_users, N, M, coord_file, server_address, server_
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Proceso Generador de Usuarios")
-    parser.add_argument('--num_users', type=int, required=True, help='Numero de usuarios a generar (Y)')
+    parser.add_argument('--num_usuarios', type=int, required=True, help='Numero de usuarios a generar')
     parser.add_argument('--cuadricula_N', type=int, required=True, help='Tamaño N de la cuadrícula')
     parser.add_argument('--cuadricula_M', type=int, required=True, help='Tamaño M de la cuadrícula')
-    parser.add_argument('--coord_file', type=str, required=True, help='Archivo de coordenadas iniciales')
-    parser.add_argument('--server_address', type=str, default='localhost', help='Direccion del servidor ZeroMQ (default: localhost)')
-    parser.add_argument('--port', type=int, default=5555, help='Puerto del servidor ZeroMQ (default: 5555)')
+    parser.add_argument('--coords', type=str, required=True, help='Archivo de coordenadas iniciales')
+    parser.add_argument('--server_address', type=str, default='localhost', help='Direccion del servidor ZeroMQ')
     args = parser.parse_args()
 
     proceso_generador_users(
-        num_users=args.num_users,
+        num_users=args.num_usuarios,
         N=args.cuadricula_N,
         M=args.cuadricula_M,
-        coord_file=args.coord_file,
+        coord_file=args.coords,
         server_address=args.server_address,
-        server_port=args.port
+        server_port=5555
     )
