@@ -1,12 +1,10 @@
 """
 Uso:
-    python taxi.py --taxi_id <id> --cuadricula_N <N> --cuadricula_M <M> --init_x <x> --init_y <y> --velocidad <velocidad> --port <port>
+    python taxi.py --taxi_id <id> --cuadricula_N <N> --cuadricula_M <M> --init_x <x> --init_y <y> --velocidad <velocidad> --broker_address <address> --broker_port <port>
 
 Ejemplos:
-    python taxi.py --taxi_id 1 --cuadricula_N 50 --cuadricula_M 50 --init_x 5 --init_y 5 --velocidad 2 --port 1883
-    python taxi.py --taxi_id 3 --cuadricula_N 50 --cuadricula_M 50 --init_x 6 --init_y 7 --velocidad 4 --port 1883
-    python taxi.py --taxi_id 2 --cuadricula_N 50 --cuadricula_M 50 --init_x 6 --init_y 7 --velocidad 1 --port 1883
-    python taxi.py --taxi_id 4 --cuadricula_N 50 --cuadricula_M 50 --init_x 45 --init_y 37 --velocidad 4 --port 1883
+    python taxi.py --taxi_id 1 --cuadricula_N 50 --cuadricula_M 50 --init_x 5 --init_y 5 --velocidad 2 --broker_address test.mosquitto.org
+    python taxi.py --taxi_id 3 --cuadricula_N 50 --cuadricula_M 50 --init_x 6 --init_y 7 --velocidad 4 --broker_address broker.emqx.io
 """
 
 import time
@@ -15,7 +13,6 @@ import random
 import argparse
 import sys
 import paho.mqtt.client as mqtt
-
 
 def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_address, broker_port):
     """
@@ -40,10 +37,9 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     # Independencia entre hilos
     lock = threading.Lock()
 
-    # Configuración del cliente MQTT
-    client = mqtt.Client(client_id=f"Taxi_{taxi_id}")
-    client.connect(broker_address, broker_port, 60)
-    client.loop_start()
+    # Variables para gestionar la conexión MQTT
+    client = None
+    conectado = False
 
     # Configuración del tópico al que se está publicando posiciones
     topic_posicion = f"taxis/{taxi_id}/posicion"
@@ -53,15 +49,25 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
     objetivo_usuario = None  # (user_id, user_x, user_y)
 
     def on_connect(client, userdata, flags, rc):
+        nonlocal conectado
         if rc == 0:
+            conectado = True
             topic_servicio = f"taxis/{taxi_id}/servicio"
             client.subscribe(topic_servicio)
             print(f"Taxi {taxi_id} conectado al broker MQTT y suscrito a {topic_servicio}")
         else:
             print(f"Taxi {taxi_id} error al conectar al broker MQTT, código de retorno {rc}")
-            sys.exit(1)
+            conectado = False
+
+    def on_disconnect(client, userdata, rc):
+        nonlocal conectado
+        print(f"Taxi {taxi_id} desconectado del broker MQTT con código de retorno {rc}")
+        conectado = False
+        # Intentar reconectar al broker
+        reconectar_broker()
 
     def on_message(client, userdata, msg):
+        nonlocal servicios_completados, objetivo_usuario, tiempo_total
         try:
             topic_parts = msg.topic.split('/')
             if len(topic_parts) != 3 or topic_parts[0] != 'taxis' or topic_parts[2] != 'servicio':
@@ -116,9 +122,42 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
         client.publish(topic_posicion, mensaje)
         print(f"Taxi {taxi_id} publicó posición: ({x}, {y})")
 
-    # Asignar callbacks
-    client.on_connect = on_connect
-    client.on_message = on_message
+    def conectar_broker():
+        """
+        Conectar al broker MQTT único.
+        """
+        nonlocal client, conectado
+        try:
+            client = mqtt.Client(client_id=f"Taxi_{taxi_id}")
+            client.on_connect = on_connect
+            client.on_disconnect = on_disconnect
+            client.on_message = on_message
+            client.connect(broker_address, broker_port, 60)
+            client.loop_start()
+            print(f"Taxi {taxi_id} intentando conectarse al broker MQTT en {broker_address}:{broker_port}")
+        except Exception as e:
+            print(f"Taxi {taxi_id} no pudo conectarse al broker MQTT en {broker_address}:{broker_port}. Error: {e}")
+            sys.exit(1)
+
+    def reconectar_broker():
+        """
+        Intentar reconectar al broker MQTT.
+        """
+        nonlocal client, conectado
+        print(f"Taxi {taxi_id} intentando reconectarse al broker MQTT en {broker_address}:{broker_port}")
+        try:
+            client.reconnect()
+            conectado = True
+        except Exception as e:
+            print(f"Taxi {taxi_id} fallo al intentar reconectarse: {e}")
+            time.sleep(5)  # Esperar 5 segundos antes de reintentar
+            reconectar_broker()
+
+    def publicar_posicion_periodica():
+        """ Publica la posición actual del taxi al broker MQTT cada intervalo basado en la velocidad. """
+        while True:
+            publicar_posicion()
+            time.sleep(1)  # Intervalo de publicación; ajusta según sea necesario
 
     print(f"Taxi {taxi_id} se ha registrado exitosamente en el servidor.")
     print(f"Posición inicial del Taxi {taxi_id}: ({x}, {y})")
@@ -200,6 +239,9 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
                 publicar_posicion()
                 print(f"Han transcurrido {tiempo_total} minutos. Posición del taxi: ({x}, {y}).")
 
+    # Iniciar la conexión al broker MQTT
+    conectar_broker()
+
     # Iniciar el hilo de movimiento
     hilo_movimiento = threading.Thread(target=movimiento_func, daemon=True)
     hilo_movimiento.start()
@@ -210,10 +252,10 @@ def taxi_procesos(taxi_id, tam_cuadricula, pos_inicial, velocidad_kmh, broker_ad
             time.sleep(1)
     except KeyboardInterrupt:
         print("Taxi detenido.")
-        client.loop_stop()
-        client.disconnect()
+        if client is not None:
+            client.loop_stop()
+            client.disconnect()
         sys.exit()
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Proceso del Taxi")
@@ -223,7 +265,8 @@ if __name__ == "__main__":
     parser.add_argument('--init_x', type=int, required=True, help='Posición inicial x')
     parser.add_argument('--init_y', type=int, required=True, help='Posición inicial y')
     parser.add_argument('--velocidad', type=int, required=True, choices=[1, 2, 4], help='Velocidad en km/h (1, 2, 4)')
-    parser.add_argument('--port', type=int, default=1883, help='Puerto del broker MQTT (default: 1883)')
+    parser.add_argument('--broker_address', type=str, required=True, help='Dirección del broker MQTT único')
+    parser.add_argument('--broker_port', type=int, default=1883, help='Puerto del broker MQTT (default: 1883)')
     args = parser.parse_args()
 
     taxi_procesos(
@@ -231,6 +274,6 @@ if __name__ == "__main__":
         tam_cuadricula=(args.cuadricula_N, args.cuadricula_M),
         pos_inicial=(args.init_x, args.init_y),
         velocidad_kmh=args.velocidad,
-        broker_address='test.mosquitto.org',  # Asegúrate de que coincida con el servidor
-        broker_port=args.port
+        broker_address=args.broker_address,
+        broker_port=args.broker_port
     )

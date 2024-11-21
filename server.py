@@ -15,17 +15,19 @@ import paho.mqtt.client as mqtt
 import zmq
 import signal
 from datetime import datetime
+import json
+import os
 
 def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, intervalo_guardado):
     """
-    Función principal para el proceso del servidor.
+    Función principal para el proceso del servidor principal.
 
     Parámetros:
         N (int): Tamaño N (filas) de la cuadrícula.
         M (int): Tamaño M (columnas) de la cuadrícula.
         mqtt_broker_address (str): Dirección del broker MQTT.
         mqtt_broker_port (int): Puerto del broker MQTT.
-        zmq_port (int): Puerto para el servidor ZeroMQ.
+        zmq_port (int): Puerto para manejar solicitudes de usuarios via ZeroMQ.
         intervalo_guardado (int): Intervalo en segundos para guardar el estado.
     """
 
@@ -44,69 +46,56 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
     servicios_negados = 0
     contadores_lock = threading.Lock()
 
-    # Configuración de ZeroMQ
+    # Configuración de ZeroMQ para manejar solicitudes de usuarios
     context = zmq.Context()
     socket_zmq = context.socket(zmq.REP)
-    socket_zmq.bind(f"tcp://*:{zmq_port}")
-    print(f"Servidor ZeroMQ escuchando en puerto {zmq_port}")
+    try:
+        socket_zmq.bind(f"tcp://*:{zmq_port}")
+        print(f"Servidor Principal ZeroMQ escuchando en puerto {zmq_port}")
+    except zmq.ZMQError as e:
+        print(f"Error al enlazar ZeroMQ en puerto {zmq_port}: {e}")
+        sys.exit(1)
 
     # Evento para detener los hilos correctamente
     stop_event = threading.Event()
 
-    # Configuración del archivo de registro
-    log_lock = threading.Lock()
-    log_file = "Interaccion.txt"
+    # Archivo de sincronización para guardar el estado
+    archivo_sincronizacion = "Interaccion.txt"
 
     def log_event(message):
         """
-        Función para imprimir mensajes en consola.
+        Función para imprimir mensajes en consola sin fecha ni hora.
 
         Parámetros:
             message (str): Mensaje a imprimir.
         """
-        with log_lock:
-            print(message)
+        print(message)
 
     def guardar_estado():
         """
-        Función para guardar el estado actual del sistema en el archivo de registro.
+        Función para guardar el estado actual del sistema en el archivo de registro y publicarlo al tópico de sincronización.
         """
-        with taxis_info_lock, contadores_lock, log_lock:
-            with open(log_file, 'w') as f:
-                # Registro de taxis
-                f.write("Registro de taxis\n\n")
-                for taxi_id, info in sorted(taxis_info.items()):
-                    if info['initial_pos']:
-                        f.write(f"Taxi {taxi_id}, {info['initial_pos'][0]} {info['initial_pos'][1]}\n")
-                        for pos in info['positions'][1:]:
-                            f.write(f"{pos[0]} {pos[1]}\n")
-                        f.write(f"Servicios\n{info['servicios_completados']}\n")
-                        f.write("Servicios asignados\n")
-                        for servicio in info['servicios_asignados']:
-                            pos_taxi, pos_usuario = servicio
-                            f.write(f"{pos_taxi[0]} {pos_taxi[1]}, {pos_usuario[0]} {pos_usuario[1]}\n")
-                        f.write(f"Disponible: {'Sí' if info['available'] else 'No'}\n\n")
+        with taxis_info_lock, contadores_lock:
+            try:
+                estado = {
+                    'taxis_info': taxis_info,
+                    'total_servicios': total_servicios,
+                    'servicios_negados': servicios_negados
+                }
+                with open(archivo_sincronizacion, 'w') as f:
+                    json.dump(estado, f, default=lambda o: o.__dict__ if hasattr(o, '__dict__') else o, indent=4)
+                log_event("Estado actual del sistema guardado en Interaccion.txt")
 
-                # Resumen de los servicios
-                f.write("Resumen de los servicios\n\n")
-                f.write("Servicios aceptados\n")
-                f.write(f"{total_servicios}\n\n")
-                f.write("Servicios negados\n")
-                f.write(f"{servicios_negados}\n\n")
-
-                # Servicios asignados
-                f.write("Servicios asignados\n")
-                for taxi_id, info in sorted(taxis_info.items()):
-                    for servicio in info['servicios_asignados']:
-                        pos_taxi, pos_usuario = servicio
-                        f.write(f"{pos_taxi[0]} {pos_taxi[1]}, {pos_usuario[0]} {pos_usuario[1]}\n")
-                f.write("\n")
-
-        log_event("Estado actual del sistema guardado en Interaccion.txt")
+                # Publicar el estado al tópico para que la réplica lo reciba
+                client.publish("servidor/Interaccion", json.dumps(estado))
+                # Comentamos la siguiente línea para evitar que aparezca el mensaje deseado
+                # log_event("Estado del sistema publicado al tópico 'servidor/Interaccion'")
+            except Exception as e:
+                log_event(f"Error al guardar el estado: {e}")
 
     def conexion(client, userdata, flags, rc, properties=None):
         if rc == 0:
-            log_event("Servidor MQTT conectado al broker exitosamente.")
+            log_event("Servidor Principal MQTT conectado al broker exitosamente.")
             # Suscribirse a todos los tópicos de posición de taxis y completados
             client.subscribe("taxis/+/posicion")
             client.subscribe("taxis/+/completado")
@@ -123,6 +112,11 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
     def mensaje(client, userdata, msg):
         nonlocal total_servicios, servicios_negados  # Usar nonlocal
         try:
+            if msg.topic == "servidor/Interaccion":
+                # Este servidor principal no debería recibir mensajes en este tópico, ignorar
+                return
+
+            # Procesar mensajes de taxis
             topic_parts = msg.topic.split('/')
             if len(topic_parts) < 3 or topic_parts[0] != 'taxis':
                 desconocido_msg = f"Mensaje recibido en tópico desconocido: {msg.topic}"
@@ -152,7 +146,7 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
                             # El taxi ha alcanzado su límite de servicios
                             respuesta = "ID Taxi inactivo. No puede registrarse."
                             client.publish(f"taxis/{taxi_id}/registro", respuesta)
-                            intento_msg = f"Taxi {taxi_id} intento registrarse pero ya ha culminado su jornada."
+                            intento_msg = f"Taxi {taxi_id} intentó registrarse pero ya ha culminado su jornada."
                             log_event(intento_msg)
                             with contadores_lock:
                                 servicios_negados += 1
@@ -213,28 +207,10 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
             guardar_estado()
             return
 
-    # Configuración del cliente MQTT con protocolo actualizado
-    client = mqtt.Client(client_id="Servidor", protocol=mqtt.MQTTv5)
-
-    client.on_connect = conexion
-    client.on_message = mensaje
-
-    try:
-        client.connect(mqtt_broker_address, mqtt_broker_port, 60)
-    except Exception as e:
-        error_msg = f"No se pudo conectar al broker MQTT: {e}"
-        log_event(error_msg)
-        with contadores_lock:
-            servicios_negados += 1
-        guardar_estado()
-        sys.exit(1)
-
-    client.loop_start()
-
     def manejar_solicitudes_zmq():
         nonlocal total_servicios, servicios_negados  # Usar nonlocal
         """
-        Manejar solicitudes de usuarios via ZeroMQ con un timeout de 60 segundos.
+        Manejar solicitudes de usuarios vía ZeroMQ con un timeout de 60 segundos.
         """
         while not stop_event.is_set():
             try:
@@ -335,10 +311,6 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
                     servicios_negados += 1
                 guardar_estado()
 
-    # Iniciar el hilo para manejar solicitudes de usuarios
-    thread_zmq = threading.Thread(target=manejar_solicitudes_zmq)
-    thread_zmq.start()
-
     def guardar_estado_periodicamente():
         """
         Hilo que guarda el estado periódicamente según el intervalo especificado.
@@ -347,16 +319,11 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
             guardar_estado()
             time.sleep(intervalo_guardado)
 
-    # Iniciar el hilo para guardar el estado periódicamente
-    hilo_guardado = threading.Thread(target=guardar_estado_periodicamente)
-    hilo_guardado.daemon = True  # Hilo en segundo plano
-    hilo_guardado.start()
-
     def shutdown(signum, frame):
         """
         Función para manejar el cierre del servidor de manera ordenada.
         """
-        log_event("\nServidor detenido.")
+        log_event("\nServidor Principal detenido.")
         stop_event.set()
         thread_zmq.join(timeout=2)
         client.loop_stop()
@@ -368,12 +335,38 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
         guardar_estado()
 
         # Añadir mensaje de cierre con timestamp
-        with log_lock:
-            with open(log_file, 'a') as f:
-                f.write(f"Servidor detenido\n")
+        with open(archivo_sincronizacion, 'a') as f:
+            f.write(f"Servidor Principal detenido en {datetime.now()}\n")
 
         log_event("Resumen de servicios registrado en Interaccion.txt")
         sys.exit(0)
+
+    # Configuración del cliente MQTT con el broker único
+    client = mqtt.Client(client_id="Servidor_Principal", protocol=mqtt.MQTTv5)
+
+    client.on_connect = conexion
+    client.on_message = mensaje
+
+    try:
+        client.connect(mqtt_broker_address, mqtt_broker_port, 60)
+        log_event("Servidor Principal MQTT conectado al broker exitosamente.")
+    except Exception as e:
+        error_msg = f"No se pudo conectar al broker MQTT: {e}"
+        log_event(error_msg)
+        with contadores_lock:
+            servicios_negados += 1
+        guardar_estado()
+        sys.exit(1)
+
+    client.loop_start()
+
+    # Iniciar el hilo para manejar solicitudes de usuarios
+    thread_zmq = threading.Thread(target=manejar_solicitudes_zmq, daemon=True)
+    thread_zmq.start()
+
+    # Iniciar el hilo para guardar el estado periódicamente
+    hilo_guardado = threading.Thread(target=guardar_estado_periodicamente, daemon=True)
+    hilo_guardado.start()
 
     # Manejar señales de interrupción para cerrar el servidor correctamente
     signal.signal(signal.SIGINT, shutdown)
@@ -384,7 +377,7 @@ def proceso_servidor(N, M, mqtt_broker_address, mqtt_broker_port, zmq_port, inte
         time.sleep(1)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Proceso del Servidor")
+    parser = argparse.ArgumentParser(description="Proceso del Servidor Principal")
     parser.add_argument('--cuadricula_N', type=int, required=True, help='Tamaño N de la cuadrícula')
     parser.add_argument('--cuadricula_M', type=int, required=True, help='Tamaño M de la cuadrícula')
     parser.add_argument('--intervalo_guardado', type=int, default=60, help='Intervalo en segundos para guardar el estado (default: 60)')
@@ -393,8 +386,8 @@ if __name__ == "__main__":
     proceso_servidor(
         N=args.cuadricula_N,
         M=args.cuadricula_M,
-        mqtt_broker_address='test.mosquitto.org',
+        mqtt_broker_address='test.mosquitto.org',  # Usar el mismo broker MQTT que la réplica
         mqtt_broker_port=1883,
-        zmq_port=5555,
+        zmq_port=5555,  # Puerto para manejar solicitudes de usuarios
         intervalo_guardado=args.intervalo_guardado
     )
