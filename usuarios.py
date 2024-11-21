@@ -4,6 +4,7 @@ Uso:
 
 Ejemplo:
     python3 usuarios.py --num_usuarios 3 --cuadricula_N 50 --cuadricula_M 50 --coords coordenadas_Usuarios.txt --server_address 192.168.0.9
+    python usuarios.py --num_usuarios 1 --cuadricula_N 50 --cuadricula_M 50 --coords coordenadas_Usuarios.txt --server_address 192.168.0.9
 """
 
 import argparse

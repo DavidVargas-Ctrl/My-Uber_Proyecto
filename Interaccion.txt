@@ -1,0 +1,32 @@
+Registro de taxis
+
+Taxi 4, 45 37
+44 38
+44 38
+45 37
+43 37
+43 37
+45 37
+46 38
+45 37
+44 38
+Servicios
+2
+Servicios asignados
+43 37, 42 24
+45 37, 42 24
+Disponible: Sí
+
+Resumen de los servicios
+
+Servicios aceptados
+2
+
+Servicios negados
+0
+
+Servicios asignados
+43 37, 42 24
+45 37, 42 24
+
+Servidor detenido

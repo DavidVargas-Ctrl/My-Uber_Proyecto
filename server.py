@@ -4,6 +4,7 @@ Uso:
 
 Ejemplo:
     python3 server.py --cuadricula_N 50 --cuadricula_M 50 --intervalo_guardado 10
+    python server.py --cuadricula_N 50 --cuadricula_M 50 --intervalo_guardado 10
 """
 
 import threading

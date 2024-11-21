@@ -1,5 +1,0 @@
-{
-    "taxis_info": {},
-    "total_servicios": 0,
-    "servicios_negados": 0
-}

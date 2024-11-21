@@ -1,0 +1,35 @@
+=== Health Check Report ===
+Fecha de inicio: 2024-11-21 16:58:15
+
+[2024-11-21 16:58:15] Broker START:0 - INICIO - Iniciando Health Check para brokers MQTT.
+[2024-11-21 16:58:18] Broker test.mosquitto.org:1883 - CONNECTED - Conexión establecida exitosamente.
+[2024-11-21 16:58:18] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 16:58:18 2024)
+[2024-11-21 16:58:20] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 16:58:28] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 16:58:28 2024)
+[2024-11-21 16:58:30] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 16:58:38] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 16:58:38 2024)
+[2024-11-21 16:58:40] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 16:58:48] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 16:58:48 2024)
+[2024-11-21 16:58:50] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 16:58:58] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 16:58:58 2024)
+[2024-11-21 16:59:00] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 16:59:08] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 16:59:08 2024)
+[2024-11-21 16:59:10] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 16:59:18] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 16:59:18 2024)
+[2024-11-21 16:59:20] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 16:59:28] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 16:59:28 2024)
+[2024-11-21 16:59:30] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 16:59:38] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 16:59:38 2024)
+[2024-11-21 16:59:40] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 16:59:48] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 16:59:48 2024)
+[2024-11-21 16:59:50] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 16:59:58] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 16:59:58 2024)
+[2024-11-21 17:00:00] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 17:00:08] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 17:00:08 2024)
+[2024-11-21 17:00:11] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 17:00:18] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 17:00:18 2024)
+[2024-11-21 17:00:21] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 17:00:28] Broker test.mosquitto.org:1883 - CONNECTED - Mensaje 'PING' enviado correctamente. (Thu Nov 21 17:00:28 2024)
+[2024-11-21 17:00:30] Broker test.mosquitto.org:1883 - DISCONNECTED - Desconexión voluntaria.
+[2024-11-21 17:00:31] Broker 10.43.100.114:1883 - DISCONNECTED - Excepción: timed out
+[2024-11-21 17:00:38] Broker END:0 - FIN - Health Check detenido.
